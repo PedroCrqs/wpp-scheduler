@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 Based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [1.7.0] - 2026-03-23
+
+### Fixed
+
+- Self chat now uses only negative from self id to detection
+
 ---
 
 ## [1.6.0] - 2026-03-23
