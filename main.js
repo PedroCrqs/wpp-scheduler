@@ -359,9 +359,6 @@ function resetarDiario() {
 // CLIENTE WHATSAPP
 // ─────────────────────────────────────────────
 
-let meuIdLogado;
-let meuLidLogado;
-
 const client = new Client({
   authStrategy: new LocalAuth({ clientId: `scheduler-bot-${INSTANCIA}` }),
   puppeteer: {
@@ -379,9 +376,6 @@ client.on("qr", (qr) => {
 
 client.on("ready", () => {
   log("BOT", "Cliente WhatsApp pronto ✓");
-  meuIdLogado = client.info.wid._serialized;
-  meuLidLogado = client.info.wid.user; // ID interno usado no chat "Você"
-  console.log("ID Identificado:", meuIdLogado, "| LID:", meuLidLogado);
   filaHoje = carregarFila();
   // Recalcula disparosFeitos com base na fila carregada
   disparosFeitos = filaHoje.filter((m) => m.status === "enviado").length;
@@ -405,20 +399,12 @@ client.on("disconnected", (reason) => {
 // ─────────────────────────────────────────────
 
 client.on("message_create", async (msg) => {
-  // Só processa mensagens enviadas por você
-  if (!msg.fromMe) return;
+  const meuId = client.info.wid._serialized;
+  const destinatario = msg.to;
 
-  // Ignora mensagens enviadas para grupos
-  if (msg.to.endsWith("@g.us")) return;
+  // console.log(`Remetente: ${remetente}, Destinatário: ${destinatario}`);
 
-  // Só processa o chat "Você"
-  // Compara o par exato capturado no login:
-  //   msg.from deve ser exatamente meuIdLogado  (ex: 5521972063577@c.us)
-  //   msg.to   deve ser exatamente meuLidLogado (ex: 96654279573661@lid)
-  if (!meuIdLogado || !meuLidLogado) return;
-  const fromSemDispositivo = msg.from.split(":")[0]; // remove sufixo :15 se houver
-  if (fromSemDispositivo !== meuIdLogado) return;
-  if (msg.to !== `${meuLidLogado}@lid`) return;
+  if (!msg.fromMe || destinatario !== meuId) return;
 
   // Ignora respostas automáticas do próprio bot (evita loop)
   const prefixosBot = ["✅", "⚠️", "📊", "🗑️", "📋", "📤"];
