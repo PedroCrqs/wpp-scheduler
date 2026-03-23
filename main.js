@@ -412,9 +412,14 @@ client.on("message_create", async (msg) => {
   if (msg.to.endsWith("@g.us")) return;
 
   // Só processa o chat "Você"
-  // msg.to no chat próprio é sempre @lid com o ID interno do wid.user
-  const destinatarioId = msg.to.split("@")[0];
-  if (!meuLidLogado || destinatarioId !== meuLidLogado) return;
+  // No chat próprio: msg.to termina em @lid E msg.from é o número do bot
+  const fromNumero = msg.from.split("@")[0].split(":")[0];
+  const meuNumero = meuIdLogado
+    ? meuIdLogado.split("@")[0].split(":")[0]
+    : null;
+  const ehChatProprio =
+    msg.to.endsWith("@lid") && meuNumero && fromNumero === meuNumero;
+  if (!ehChatProprio) return;
 
   // Ignora respostas automáticas do próprio bot (evita loop)
   const prefixosBot = ["✅", "⚠️", "📊", "🗑️", "📋", "📤"];
