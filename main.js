@@ -407,6 +407,20 @@ client.on("message_create", async (msg) => {
   // Ignora mensagens enviadas para grupos
   if (msg.to.endsWith("@g.us")) return;
 
+  // Só processa o chat "Você"
+  // Compara apenas os números, ignorando diferença entre @c.us e @lid
+  const destinatarioNumero = msg.to.split("@")[0].split(":")[0];
+  const meuNumeroLimpo = meuIdLogado
+    ? meuIdLogado.split("@")[0].split(":")[0]
+    : null;
+  const fromNumero = msg.from.split("@")[0].split(":")[0];
+  const ehChatProprio =
+    (meuNumeroLimpo && destinatarioNumero === meuNumeroLimpo) ||
+    (meuNumeroLimpo &&
+      fromNumero === meuNumeroLimpo &&
+      msg.to.endsWith("@lid"));
+  if (!ehChatProprio) return;
+
   // Ignora respostas automáticas do próprio bot (evita loop)
   const prefixosBot = ["✅", "⚠️", "📊", "🗑️", "📋", "📤"];
   if (prefixosBot.some((p) => msg.body.startsWith(p))) return;
