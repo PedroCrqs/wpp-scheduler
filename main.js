@@ -268,7 +268,7 @@ function gerarHorarios() {
     { hora: 18, minuto: 0 },
   ];
   return base.map(({ hora, minuto }) => {
-    const jitter = Math.floor(Math.random() * 30); // 0–9 min
+    const jitter = Math.floor(Math.random() * 30);
     const novoMinuto = minuto + jitter;
     return `${String(hora).padStart(2, "0")}:${String(novoMinuto).padStart(2, "0")}`;
   });
@@ -376,6 +376,8 @@ client.on("qr", (qr) => {
 
 client.on("ready", () => {
   log("BOT", "Cliente WhatsApp pronto ✓");
+  meuIdLogado = client.info.wid._serialized;
+  console.log("ID Identificado:", meuIdLogado);
   filaHoje = carregarFila();
   // Recalcula disparosFeitos com base na fila carregada
   disparosFeitos = filaHoje.filter((m) => m.status === "enviado").length;
@@ -399,15 +401,13 @@ client.on("disconnected", (reason) => {
 // ─────────────────────────────────────────────
 
 client.on("message_create", async (msg) => {
-  // Só processa mensagens enviadas pelo próprio número
+  // Só processa mensagens enviadas por você
   if (!msg.fromMe) return;
 
-  // Ignora mensagens de grupos
-  if (msg.isGroupMsg) return;
+  // Ignora mensagens enviadas para grupos
+  if (msg.to.endsWith("@g.us")) return;
 
-  if (msg.isGroupMsg && msg.fromMe) return;
-
-  // Ignora as próprias respostas do bot para evitar loop infinito
+  // Ignora respostas automáticas do próprio bot (evita loop)
   const prefixosBot = ["✅", "⚠️", "📊", "🗑️", "📋", "📤"];
   if (prefixosBot.some((p) => msg.body.startsWith(p))) return;
 
