@@ -1,0 +1,10 @@
+.wwebjs_auth/
+.wwebjs_cache/
+fila*.json
+log*.json
+node_modules/
+ecosystem.config.js
+.DS_Store
+Thumbs.db
+.env
+.env.*

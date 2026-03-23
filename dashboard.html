@@ -1,0 +1,749 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bot Scheduler — Painel</title>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap");
+
+      :root {
+        --bg: #0a0a0f;
+        --surface: #111118;
+        --border: #1e1e2e;
+        --accent: #00ff88;
+        --accent2: #7c3aed;
+        --warn: #f59e0b;
+        --danger: #ef4444;
+        --text: #e2e8f0;
+        --muted: #4a5568;
+        --card: #13131d;
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        background: var(--bg);
+        color: var(--text);
+        font-family: "Syne", sans-serif;
+        min-height: 100vh;
+        padding: 2rem;
+      }
+
+      /* noise overlay */
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+        pointer-events: none;
+        z-index: 0;
+      }
+
+      .content {
+        position: relative;
+        z-index: 1;
+        max-width: 1100px;
+        margin: 0 auto;
+      }
+
+      /* HEADER */
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 2.5rem;
+        padding-bottom: 1.5rem;
+        border-bottom: 1px solid var(--border);
+      }
+      .logo {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+      }
+      .logo-icon {
+        width: 44px;
+        height: 44px;
+        background: var(--accent);
+        border-radius: 12px;
+        display: grid;
+        place-items: center;
+        font-size: 1.4rem;
+      }
+      h1 {
+        font-size: 1.5rem;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+      }
+      h1 span {
+        color: var(--accent);
+      }
+      .status-pill {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        background: var(--card);
+        border: 1px solid var(--border);
+        padding: 0.4rem 1rem;
+        border-radius: 999px;
+        font-family: "Space Mono", monospace;
+        font-size: 0.75rem;
+      }
+      .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--accent);
+        animation: pulse 2s ease-in-out infinite;
+      }
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.3;
+        }
+      }
+
+      /* KPI CARDS */
+      .kpi-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1rem;
+        margin-bottom: 2rem;
+      }
+      .kpi {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 1.25rem 1.5rem;
+        position: relative;
+        overflow: hidden;
+      }
+      .kpi::after {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 2px;
+        background: var(--accent);
+      }
+      .kpi.warn::after {
+        background: var(--warn);
+      }
+      .kpi.purple::after {
+        background: var(--accent2);
+      }
+      .kpi-label {
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: var(--muted);
+        margin-bottom: 0.5rem;
+      }
+      .kpi-value {
+        font-family: "Space Mono", monospace;
+        font-size: 2rem;
+        font-weight: 700;
+        line-height: 1;
+      }
+      .kpi-sub {
+        font-size: 0.75rem;
+        color: var(--muted);
+        margin-top: 0.3rem;
+      }
+
+      /* MAIN GRID */
+      .main-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1.5rem;
+        margin-bottom: 1.5rem;
+      }
+      @media (max-width: 700px) {
+        .main-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      .card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 1.5rem;
+      }
+      .card-title {
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        color: var(--muted);
+        margin-bottom: 1.25rem;
+      }
+
+      /* TIMELINE DE HORÁRIOS */
+      .timeline {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+      .slot {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        padding: 0.6rem 0.9rem;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+        transition: border-color 0.2s;
+        cursor: default;
+      }
+      .slot.done {
+        border-color: #00ff8840;
+        background: #00ff8808;
+      }
+      .slot.next {
+        border-color: var(--accent);
+        background: #00ff8812;
+        animation: glow 2s ease-in-out infinite;
+      }
+      .slot.waiting {
+        border-color: var(--border);
+      }
+      @keyframes glow {
+        0%,
+        100% {
+          box-shadow: 0 0 0 0 #00ff8820;
+        }
+        50% {
+          box-shadow: 0 0 12px 2px #00ff8830;
+        }
+      }
+
+      .slot-time {
+        font-family: "Space Mono", monospace;
+        font-size: 0.85rem;
+        font-weight: 700;
+        min-width: 44px;
+        color: var(--accent);
+      }
+      .slot.waiting .slot-time {
+        color: var(--muted);
+      }
+      .slot-msg {
+        flex: 1;
+        font-size: 0.78rem;
+        color: var(--text);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .slot-badge {
+        font-size: 0.65rem;
+        padding: 0.2rem 0.6rem;
+        border-radius: 999px;
+        font-family: "Space Mono", monospace;
+        white-space: nowrap;
+      }
+      .badge-done {
+        background: #00ff8820;
+        color: var(--accent);
+      }
+      .badge-next {
+        background: #00ff8830;
+        color: var(--accent);
+      }
+      .badge-empty {
+        background: #ffffff10;
+        color: var(--muted);
+      }
+      .badge-waiting {
+        background: #ffffff08;
+        color: var(--muted);
+      }
+
+      /* LOG */
+      .log-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.4rem;
+        max-height: 280px;
+        overflow-y: auto;
+      }
+      .log-list::-webkit-scrollbar {
+        width: 4px;
+      }
+      .log-list::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      .log-list::-webkit-scrollbar-thumb {
+        background: var(--border);
+        border-radius: 4px;
+      }
+      .log-item {
+        display: flex;
+        gap: 0.75rem;
+        align-items: flex-start;
+        font-family: "Space Mono", monospace;
+        font-size: 0.68rem;
+        padding: 0.4rem 0.6rem;
+        border-radius: 6px;
+      }
+      .log-item:hover {
+        background: var(--surface);
+      }
+      .log-ts {
+        color: var(--muted);
+        white-space: nowrap;
+      }
+      .log-tipo {
+        min-width: 70px;
+      }
+      .tipo-ENVIADO {
+        color: var(--accent);
+      }
+      .tipo-RECEBIDA {
+        color: #60a5fa;
+      }
+      .tipo-ERRO {
+        color: var(--danger);
+      }
+      .tipo-AVISO {
+        color: var(--warn);
+      }
+      .tipo-BOT {
+        color: var(--accent2);
+      }
+      .tipo-CRON {
+        color: #a78bfa;
+      }
+      .log-detalhe {
+        color: var(--text);
+        opacity: 0.7;
+        word-break: break-word;
+      }
+
+      /* INSTRUÇÃO CONFIG */
+      .config-box {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+      }
+      .config-box h2 {
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: var(--muted);
+        margin-bottom: 1rem;
+      }
+      .config-step {
+        display: flex;
+        gap: 1rem;
+        align-items: flex-start;
+        margin-bottom: 0.9rem;
+      }
+      .step-num {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        background: var(--accent2);
+        color: #fff;
+        display: grid;
+        place-items: center;
+        font-family: "Space Mono", monospace;
+        font-size: 0.7rem;
+        font-weight: 700;
+        flex-shrink: 0;
+      }
+      .step-text {
+        font-size: 0.82rem;
+        line-height: 1.6;
+        color: var(--text);
+      }
+      .step-text code {
+        background: #ffffff12;
+        border: 1px solid var(--border);
+        padding: 0.1em 0.4em;
+        border-radius: 4px;
+        font-family: "Space Mono", monospace;
+        font-size: 0.78em;
+        color: var(--accent);
+      }
+      .commands {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin-top: 0.75rem;
+      }
+      .cmd {
+        background: #ffffff08;
+        border: 1px solid var(--border);
+        padding: 0.3rem 0.8rem;
+        border-radius: 8px;
+        font-family: "Space Mono", monospace;
+        font-size: 0.72rem;
+        color: var(--accent);
+      }
+
+      .refresh-btn {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        background: var(--accent);
+        color: #000;
+        border: none;
+        border-radius: 8px;
+        padding: 0.4rem 1rem;
+        font-family: "Syne", sans-serif;
+        font-weight: 700;
+        font-size: 0.78rem;
+        cursor: pointer;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        transition: opacity 0.2s;
+      }
+      .refresh-btn:hover {
+        opacity: 0.85;
+      }
+
+      footer {
+        margin-top: 2rem;
+        text-align: center;
+        font-family: "Space Mono", monospace;
+        font-size: 0.65rem;
+        color: var(--muted);
+        border-top: 1px solid var(--border);
+        padding-top: 1.25rem;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="content">
+      <header>
+        <div class="logo">
+          <div class="logo-icon">🤖</div>
+          <div>
+            <h1>WA <span>Scheduler</span></h1>
+            <div
+              style="font-size: 0.7rem; color: var(--muted); margin-top: 2px"
+            >
+              Painel de monitoramento local
+            </div>
+          </div>
+        </div>
+        <div style="display: flex; gap: 1rem; align-items: center">
+          <button class="refresh-btn" onclick="renderAll()">↻ Atualizar</button>
+          <div class="status-pill">
+            <div class="dot"></div>
+            <span id="statusText">Lendo logs…</span>
+          </div>
+        </div>
+      </header>
+
+      <!-- INSTRUÇÕES DE CONFIG -->
+      <div class="config-box">
+        <h2>⚙ Como usar</h2>
+        <div class="config-step">
+          <div class="step-num">1</div>
+          <div class="step-text">
+            Instale as dependências: <code>npm install</code>
+          </div>
+        </div>
+        <div class="config-step">
+          <div class="step-num">2</div>
+          <div class="step-text">
+            Edite <code>bot.js</code>: preencha <code>MEU_NUMERO</code> e
+            <code>GRUPOS_ALVO[]</code>. Para descobrir os IDs dos grupos, inicie
+            o bot e envie <code>!grupos</code> para ele.
+          </div>
+        </div>
+        <div class="config-step">
+          <div class="step-num">3</div>
+          <div class="step-text">
+            Inicie o bot: <code>node bot.js</code>. Escaneie o QR Code com o
+            WhatsApp do robô.
+          </div>
+        </div>
+        <div class="config-step">
+          <div class="step-num">4</div>
+          <div class="step-text">
+            Antes do <strong>09:05</strong>, envie as
+            <strong>10 mensagens</strong> do seu número pessoal para o número do
+            bot, uma por uma. Cada mensagem será associada a um horário na
+            ordem.
+          </div>
+        </div>
+        <div style="margin-top: 0.5rem">
+          <div
+            style="
+              font-size: 0.72rem;
+              color: var(--muted);
+              margin-bottom: 0.5rem;
+            "
+          >
+            Comandos disponíveis (envie para o bot):
+          </div>
+          <div class="commands">
+            <span class="cmd">!status</span>
+            <span class="cmd">!grupos</span>
+            <span class="cmd">!limpar</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- KPIs -->
+      <div class="kpi-grid" id="kpiGrid">
+        <div class="kpi">
+          <div class="kpi-label">Mensagens na fila</div>
+          <div class="kpi-value" id="kpiMsgs">—</div>
+          <div class="kpi-sub">de 10 esperadas</div>
+        </div>
+        <div class="kpi warn">
+          <div class="kpi-label">Disparos hoje</div>
+          <div class="kpi-value" id="kpiDisparos">—</div>
+          <div class="kpi-sub">de 10 agendados</div>
+        </div>
+        <div class="kpi purple">
+          <div class="kpi-label">Próximo disparo</div>
+          <div class="kpi-value" style="font-size: 1.2rem" id="kpiProximo">
+            —
+          </div>
+          <div class="kpi-sub" id="kpiCountdown">—</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">Grupos alvo</div>
+          <div class="kpi-value" id="kpiGrupos">—</div>
+          <div class="kpi-sub">configurados</div>
+        </div>
+      </div>
+
+      <div class="main-grid">
+        <!-- TIMELINE -->
+        <div class="card">
+          <div class="card-title">⏰ Timeline de disparos</div>
+          <div class="timeline" id="timeline"></div>
+        </div>
+
+        <!-- LOG -->
+        <div class="card">
+          <div class="card-title">📋 Log de atividade</div>
+          <div class="log-list" id="logList">
+            <div
+              style="
+                color: var(--muted);
+                font-family: &quot;Space Mono&quot;, monospace;
+                font-size: 0.75rem;
+                padding: 1rem 0;
+                text-align: center;
+              "
+            >
+              Inicie o bot para ver os logs aqui.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <footer>
+        Painel local — atualize manualmente ou use o botão ↻ &nbsp;·&nbsp; Os
+        dados são lidos de <code>fila.json</code> e <code>log.json</code> no
+        diretório do bot
+      </footer>
+    </div>
+
+    <script>
+      // ── Config (espelha o bot.js) ──────────────────────────────────────────
+      const HORARIOS = [
+        "09:05",
+        "10:08",
+        "11:01",
+        "12:15",
+        "13:07",
+        "14:22",
+        "15:09",
+        "16:18",
+        "17:01",
+        "18:30",
+      ];
+      // Número de grupos (atualizar manualmente se necessário)
+      let NUM_GRUPOS = "?";
+
+      // ── Mock data quando rodando sem servidor ──────────────────────────────
+      // Em produção real, use um pequeno servidor express para servir fila.json e log.json.
+      // Aqui demonstramos com dados de exemplo que refletem o estado atual.
+
+      function getMockFila() {
+        const agora = new Date();
+        const base = [];
+        // Simula 3 mensagens recebidas
+        const textos = [
+          "Bom dia a todos! Novidade imperdível hoje 🔥",
+          "Estamos com promoção especial até às 12h — aproveite!",
+          "Lembrete: evento ao vivo às 19h no nosso canal",
+        ];
+        for (let i = 0; i < textos.length; i++) {
+          const t = new Date(agora);
+          t.setHours(8, 10 + i * 5, 0, 0);
+          base.push({
+            indice: i,
+            corpo: textos[i],
+            preview: textos[i],
+            recebidoEm: t.toISOString(),
+            disparadoEm:
+              i === 0
+                ? new Date(agora.setHours(9, 5, 0, 0)).toISOString()
+                : null,
+            status: i === 0 ? "enviado" : "aguardando",
+          });
+        }
+        return base;
+      }
+
+      function getMockLog() {
+        const agora = new Date();
+        const entries = [];
+        const tipos = [
+          ["BOT", "Cliente WhatsApp pronto ✓"],
+          ["CRON", "10 horários agendados ✓"],
+          ["RECEBIDA", 'Msg 1: "Bom dia a todos! Novidade imp…"'],
+          ["RECEBIDA", 'Msg 2: "Estamos com promoção especial…"'],
+          ["RECEBIDA", 'Msg 3: "Lembrete: evento ao vivo às 19h…"'],
+          ["DISPARO", "Iniciando slot 1 (09:05)"],
+          ["ENVIADO", "Slot 1 → Grupo Vendas RJ"],
+          ["ENVIADO", "Slot 1 → Grupo Clientes VIP"],
+          ["ENVIADO", "Slot 1 → Grupo Promoções"],
+        ];
+        entries.push(
+          ...tipos.map(([tipo, detalhe], i) => ({
+            ts: new Date(
+              agora.getTime() - (tipos.length - i) * 60000 * 8,
+            ).toISOString(),
+            tipo,
+            detalhe,
+          })),
+        );
+        return entries;
+      }
+
+      // ── Render ──────────────────────────────────────────────────────────────
+
+      function horaAgora() {
+        const n = new Date();
+        return `${String(n.getHours()).padStart(2, "0")}:${String(n.getMinutes()).padStart(2, "0")}`;
+      }
+
+      function proximoHorario() {
+        const hhmm = horaAgora();
+        return HORARIOS.find((h) => h > hhmm) || null;
+      }
+
+      function countdown(target) {
+        const [th, tm] = target.split(":").map(Number);
+        const agora = new Date();
+        const alvo = new Date(agora);
+        alvo.setHours(th, tm, 0, 0);
+        const diff = alvo - agora;
+        if (diff <= 0) return "passando...";
+        const h = Math.floor(diff / 3600000);
+        const m = Math.floor((diff % 3600000) / 60000);
+        return h > 0 ? `em ${h}h ${m}min` : `em ${m}min`;
+      }
+
+      function renderAll() {
+        // Tenta ler arquivos locais se disponíveis (via fetch), senão usa mock
+        Promise.all([
+          fetch("fila.json")
+            .then((r) => r.json())
+            .catch(() => getMockFila()),
+          fetch("log.json")
+            .then((r) => r.json())
+            .catch(() => getMockLog()),
+        ]).then(([fila, logs]) => render(fila, logs));
+      }
+
+      function render(fila, logs) {
+        const proximo = proximoHorario();
+        const disparosFeitos = fila.filter(
+          (m) => m.status === "enviado",
+        ).length;
+
+        // KPIs
+        document.getElementById("kpiMsgs").textContent = fila.length;
+        document.getElementById("kpiDisparos").textContent = disparosFeitos;
+        document.getElementById("kpiProximo").textContent = proximo || "—";
+        document.getElementById("kpiCountdown").textContent = proximo
+          ? countdown(proximo)
+          : "Todos concluídos";
+        document.getElementById("kpiGrupos").textContent = NUM_GRUPOS;
+
+        // Status pill
+        document.getElementById("statusText").textContent =
+          fila.length === 0
+            ? "Aguardando mensagens"
+            : proximo
+              ? `Próximo: ${proximo}`
+              : "Dia concluído";
+
+        // Timeline
+        const tl = document.getElementById("timeline");
+        tl.innerHTML = "";
+        HORARIOS.forEach((h, i) => {
+          const msg = fila[i];
+          const isPast = h < horaAgora();
+          const isNext = h === proximo;
+          let cls = "waiting",
+            badgeCls = "badge-waiting",
+            badgeText = h;
+          if (msg && msg.status === "enviado") {
+            cls = "done";
+            badgeCls = "badge-done";
+            badgeText = "✓ Enviado";
+          } else if (isNext) {
+            cls = "next";
+            badgeCls = "badge-next";
+            badgeText = "▶ Próximo";
+          } else if (!msg) {
+            badgeCls = "badge-empty";
+            badgeText = "Sem msg";
+          }
+
+          tl.innerHTML += `
+      <div class="slot ${cls}">
+        <span class="slot-time">${h}</span>
+        <span class="slot-msg">${msg ? msg.preview : '<em style="color:var(--muted)">aguardando mensagem...</em>'}</span>
+        <span class="slot-badge ${badgeCls}">${badgeText}</span>
+      </div>`;
+        });
+
+        // Log
+        const ll = document.getElementById("logList");
+        if (!logs || !logs.length) {
+          ll.innerHTML =
+            "<div style=\"color:var(--muted);font-family:'Space Mono',monospace;font-size:.75rem;padding:1rem;text-align:center\">Nenhum log ainda.</div>";
+          return;
+        }
+        ll.innerHTML = logs
+          .slice(0, 60)
+          .map((e) => {
+            const ts = new Date(e.ts);
+            const hora = `${String(ts.getHours()).padStart(2, "0")}:${String(ts.getMinutes()).padStart(2, "0")}:${String(ts.getSeconds()).padStart(2, "0")}`;
+            return `<div class="log-item">
+      <span class="log-ts">${hora}</span>
+      <span class="log-tipo tipo-${e.tipo}">${e.tipo}</span>
+      <span class="log-detalhe">${e.detalhe}</span>
+    </div>`;
+          })
+          .join("");
+      }
+
+      // Auto-refresh a cada 30s
+      setInterval(renderAll, 30000);
+      renderAll();
+    </script>
+  </body>
+</html>
