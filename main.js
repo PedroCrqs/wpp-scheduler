@@ -359,6 +359,9 @@ function resetarDiario() {
 // CLIENTE WHATSAPP
 // ─────────────────────────────────────────────
 
+let meuIdLogado;
+let meuLidLogado;
+
 const client = new Client({
   authStrategy: new LocalAuth({ clientId: `scheduler-bot-${INSTANCIA}` }),
   puppeteer: {
@@ -377,7 +380,8 @@ client.on("qr", (qr) => {
 client.on("ready", () => {
   log("BOT", "Cliente WhatsApp pronto ✓");
   meuIdLogado = client.info.wid._serialized;
-  console.log("ID Identificado:", meuIdLogado);
+  meuLidLogado = client.info.wid.user; // ID interno usado no chat "Você"
+  console.log("ID Identificado:", meuIdLogado, "| LID:", meuLidLogado);
   filaHoje = carregarFila();
   // Recalcula disparosFeitos com base na fila carregada
   disparosFeitos = filaHoje.filter((m) => m.status === "enviado").length;
@@ -408,18 +412,9 @@ client.on("message_create", async (msg) => {
   if (msg.to.endsWith("@g.us")) return;
 
   // Só processa o chat "Você"
-  // Compara apenas os números, ignorando diferença entre @c.us e @lid
-  const destinatarioNumero = msg.to.split("@")[0].split(":")[0];
-  const meuNumeroLimpo = meuIdLogado
-    ? meuIdLogado.split("@")[0].split(":")[0]
-    : null;
-  const fromNumero = msg.from.split("@")[0].split(":")[0];
-  const ehChatProprio =
-    (meuNumeroLimpo && destinatarioNumero === meuNumeroLimpo) ||
-    (meuNumeroLimpo &&
-      fromNumero === meuNumeroLimpo &&
-      msg.to.endsWith("@lid"));
-  if (!ehChatProprio) return;
+  // msg.to no chat próprio é sempre @lid com o ID interno do wid.user
+  const destinatarioId = msg.to.split("@")[0];
+  if (!meuLidLogado || destinatarioId !== meuLidLogado) return;
 
   // Ignora respostas automáticas do próprio bot (evita loop)
   const prefixosBot = ["✅", "⚠️", "📊", "🗑️", "📋", "📤"];
