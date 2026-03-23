@@ -412,14 +412,13 @@ client.on("message_create", async (msg) => {
   if (msg.to.endsWith("@g.us")) return;
 
   // Só processa o chat "Você"
-  // No chat próprio: msg.to termina em @lid E msg.from é o número do bot
-  const fromNumero = msg.from.split("@")[0].split(":")[0];
-  const meuNumero = meuIdLogado
-    ? meuIdLogado.split("@")[0].split(":")[0]
-    : null;
-  const ehChatProprio =
-    msg.to.endsWith("@lid") && meuNumero && fromNumero === meuNumero;
-  if (!ehChatProprio) return;
+  // Compara o par exato capturado no login:
+  //   msg.from deve ser exatamente meuIdLogado  (ex: 5521972063577@c.us)
+  //   msg.to   deve ser exatamente meuLidLogado (ex: 96654279573661@lid)
+  if (!meuIdLogado || !meuLidLogado) return;
+  const fromSemDispositivo = msg.from.split(":")[0]; // remove sufixo :15 se houver
+  if (fromSemDispositivo !== meuIdLogado) return;
+  if (msg.to !== `${meuLidLogado}@lid`) return;
 
   // Ignora respostas automáticas do próprio bot (evita loop)
   const prefixosBot = ["✅", "⚠️", "📊", "🗑️", "📋", "📤"];
