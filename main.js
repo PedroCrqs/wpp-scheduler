@@ -20,8 +20,11 @@ const path = require("path");
 // Uso: node main.js conta1 | node main.js conta2 | etc.
 const INSTANCIA = process.argv[2] || "conta1";
 
+let meuBsuid = null;
+
 const CONTAS = {
   conta1: {
+    meuBsuid: "228707713171512@lid",
     gruposGerais: [
       "5521970332124-1509473137@g.us",
       "120363154129227809@g.us",
@@ -68,6 +71,7 @@ const CONTAS = {
     ],
   },
   conta2: {
+    meuBsuid: "96654279573661@lid",
     gruposGerais: [
       "5521970332124-1509473137@g.us",
       "120363154129227809@g.us",
@@ -376,6 +380,8 @@ client.on("qr", (qr) => {
 
 client.on("ready", () => {
   log("BOT", "Cliente WhatsApp pronto ✓");
+  meuBsuid = CONTAS[INSTANCIA].meuBsuid;
+  console.log("BSUID:", meuBsuid);
   filaHoje = carregarFila();
   // Recalcula disparosFeitos com base na fila carregada
   disparosFeitos = filaHoje.filter((m) => m.status === "enviado").length;
@@ -399,12 +405,9 @@ client.on("disconnected", (reason) => {
 // ─────────────────────────────────────────────
 
 client.on("message_create", async (msg) => {
-  const meuId = client.info.wid._serialized;
-  const destinatario = msg.to;
+  meuId = client.info.wid._serialized;
 
-  // console.log(`Remetente: ${remetente}, Destinatário: ${destinatario}`);
-
-  if (!msg.fromMe || destinatario !== meuId) return;
+  if (!msg.fromMe || (msg.to !== meuBsuid && msg.to !== meuId)) return;
 
   // Ignora respostas automáticas do próprio bot (evita loop)
   const prefixosBot = ["✅", "⚠️", "📊", "🗑️", "📋", "📤"];
