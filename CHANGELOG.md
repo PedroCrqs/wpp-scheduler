@@ -3,6 +3,18 @@
 All notable changes to this project will be documented in this file.
 Based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [1.8.0] - 2026-03-24
+
+### Added
+
+- `meuBsuid` field per instance in `CONTAS` config with hardcoded `@lid` value
+- `meuBsuid` assigned on `ready` from instance config
+
+### Fixed
+
+- Self-chat detection now uses exact `@lid` BSUID match instead of unreliable number comparison
+- Added fallback check against `meuId` (`@c.us`) for extra safety
+
 ## [1.7.0] - 2026-03-23
 
 ### Fixed
