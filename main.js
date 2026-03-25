@@ -1,31 +1,36 @@
 /**
  * WhatsApp Scheduler Bot
- * Recebe mensagens do seu número pessoal e as dispara
- * automaticamente para grupos nos horários programados.
+ * Receives messages sent to self and dispatches them
+ * automatically to groups at scheduled times.
  *
- * Instalação:
+ * Install:
  *   npm install whatsapp-web.js qrcode-terminal node-cron
+ *
+ * Usage:
+ *   node main.js account1
+ *   node main.js account2
  */
 
 const { Client, LocalAuth } = require("whatsapp-web.js");
 const qrcode = require("qrcode-terminal");
 const cron = require("node-cron");
 const fs = require("fs");
+const fsPromises = require("fs").promises;
 const path = require("path");
 
 // ─────────────────────────────────────────────
 // CONFIGURAÇÃO — edite aqui
 // ─────────────────────────────────────────────
 
-// Uso: node main.js conta1 | node main.js conta2 | etc.
-const INSTANCIA = process.argv[2] || "conta1";
+// Uso: node main.js account1 | node main.js account2 | etc.
+const INSTANCE = process.argv[2] || "account1";
 
-let meuBsuid = null;
+let myBsuid = null;
 
-const CONTAS = {
-  conta1: {
-    meuBsuid: "228707713171512@lid",
-    gruposGerais: [
+const ACCOUNTS = {
+  account1: {
+    myBsuid: "228707713171512@lid",
+    generalGroups: [
       "5521970332124-1509473137@g.us",
       "120363154129227809@g.us",
       "5521972290909-1435462863@g.us",
@@ -50,29 +55,29 @@ const CONTAS = {
       "5521999014301-1504872112@g.us",
       "120363022807549390@g.us",
     ],
-    gruposEspecificos: [
-      { id: "5521970445787-1605316109@g.us", classe: "BARRA" },
-      { id: "120363020895251858@g.us", classe: "BARRA" },
-      { id: "5521970332124-1504982668@g.us", classe: "JACAREPAGUA" },
-      { id: "120363182260841786@g.us", classe: "JACAREPAGUA" },
-      { id: "5521999014301-1582451276@g.us", classe: "JACAREPAGUA" },
-      { id: "5521964429890-1567293556@g.us", classe: "JACAREPAGUA" },
-      { id: "120363038446694631@g.us", classe: "RECREIO" },
-      { id: "5521970445787-1633040235@g.us", classe: "RECREIO" },
-      { id: "5521999014301-1584277277@g.us", classe: "RECREIO_BARRA" },
-      { id: "5521964429890-1567293109@g.us", classe: "RECREIO_BARRA" },
-      { id: "5521964429890-1571490849@g.us", classe: "VARGENS" },
-      { id: "120363204631755901@g.us", classe: "VARGENS" },
-      { id: "120363166930472489@g.us", classe: "BARRA_OLIMPICA" },
-      { id: "5521999014301-1582451276@g.us", classe: "BARRA_OLIMPICA" },
-      { id: "120363020895251858@g.us", classe: "BARRA_OLIMPICA" },
-      { id: "5521970445787-1605316109@g.us", classe: "BARRA_OLIMPICA" },
-      { id: "120363182260841786@g.us", classe: "BARRA_OLIMPICA" },
+    specificGroups: [
+      { id: "5521970445787-1605316109@g.us", class: "BARRA" },
+      { id: "120363020895251858@g.us", class: "BARRA" },
+      { id: "5521970332124-1504982668@g.us", class: "JACAREPAGUA" },
+      { id: "120363182260841786@g.us", class: "JACAREPAGUA" },
+      { id: "5521999014301-1582451276@g.us", class: "JACAREPAGUA" },
+      { id: "5521964429890-1567293556@g.us", class: "JACAREPAGUA" },
+      { id: "120363038446694631@g.us", class: "RECREIO" },
+      { id: "5521970445787-1633040235@g.us", class: "RECREIO" },
+      { id: "5521999014301-1584277277@g.us", class: "RECREIO_BARRA" },
+      { id: "5521964429890-1567293109@g.us", class: "RECREIO_BARRA" },
+      { id: "5521964429890-1571490849@g.us", class: "VARGENS" },
+      { id: "120363204631755901@g.us", class: "VARGENS" },
+      { id: "120363166930472489@g.us", class: "BARRA_OLIMPICA" },
+      { id: "5521999014301-1582451276@g.us", class: "BARRA_OLIMPICA" },
+      { id: "120363020895251858@g.us", class: "BARRA_OLIMPICA" },
+      { id: "5521970445787-1605316109@g.us", class: "BARRA_OLIMPICA" },
+      { id: "120363182260841786@g.us", class: "BARRA_OLIMPICA" },
     ],
   },
-  conta2: {
-    meuBsuid: "96654279573661@lid",
-    gruposGerais: [
+  account2: {
+    myBsuid: "96654279573661@lid",
+    generalGroups: [
       "5521970332124-1509473137@g.us",
       "120363154129227809@g.us",
       "5521972290909-1435462863@g.us",
@@ -117,55 +122,54 @@ const CONTAS = {
       "5521969337001-1493229961@g.us",
       "5521986216959-1596050915@g.us",
       "120363281756743290@g.us",
-      // ─── grupos exclusivos da conta2 — adicione abaixo ───
+      // ─── grupos exclusivos da account2 — adicione abaixo ───
     ],
-    gruposEspecificos: [
-      { id: "5521970445787-1605316109@g.us", classe: "BARRA" },
-      { id: "120363020895251858@g.us", classe: "BARRA" },
-      { id: "5521970332124-1504982668@g.us", classe: "JACAREPAGUA" },
-      { id: "120363182260841786@g.us", classe: "JACAREPAGUA" },
-      { id: "5521999014301-1582451276@g.us", classe: "JACAREPAGUA" },
-      { id: "5521964429890-1567293556@g.us", classe: "JACAREPAGUA" },
-      { id: "5521987940707-1580215804@g.us", classe: "JACAREPAGUA" },
-      { id: "120363038446694631@g.us", classe: "RECREIO" },
-      { id: "5521970445787-1633040235@g.us", classe: "RECREIO" },
-      { id: "120363038446694631@g.us", classe: "RECREIO" },
-      { id: "5521999014301-1584277277@g.us", classe: "RECREIO_BARRA" },
-      { id: "5521964429890-1567293109@g.us", classe: "RECREIO_BARRA" },
-      { id: "5521999150387-1490619690@g.us", classe: "RECREIO_BARRA" },
-      { id: "5521964253033-1524608642@g.us", classe: "RECREIO_BARRA" },
-      { id: "5521964429890-1571490849@g.us", classe: "VARGENS" },
-      { id: "120363204631755901@g.us", classe: "VARGENS" },
-      { id: "5521999014301-1583261245@g.us", classe: "VARGENS" },
-      { id: "120363166930472489@g.us", classe: "BARRA_OLIMPICA" },
-      { id: "5521999014301-1582451276@g.us", classe: "BARRA_OLIMPICA" },
-      { id: "120363020895251858@g.us", classe: "BARRA_OLIMPICA" },
-      { id: "5521970445787-1605316109@g.us", classe: "BARRA_OLIMPICA" },
-      { id: "120363182260841786@g.us", classe: "BARRA_OLIMPICA" },
-      // ─── grupos específicos exclusivos da conta2 — adicione abaixo ───
+    specificGroups: [
+      { id: "5521970445787-1605316109@g.us", class: "BARRA" },
+      { id: "120363020895251858@g.us", class: "BARRA" },
+      { id: "5521970332124-1504982668@g.us", class: "JACAREPAGUA" },
+      { id: "120363182260841786@g.us", class: "JACAREPAGUA" },
+      { id: "5521999014301-1582451276@g.us", class: "JACAREPAGUA" },
+      { id: "5521964429890-1567293556@g.us", class: "JACAREPAGUA" },
+      { id: "5521987940707-1580215804@g.us", class: "JACAREPAGUA" },
+      { id: "120363038446694631@g.us", class: "RECREIO" },
+      { id: "5521970445787-1633040235@g.us", class: "RECREIO" },
+      { id: "5521999014301-1584277277@g.us", class: "RECREIO_BARRA" },
+      { id: "5521964429890-1567293109@g.us", class: "RECREIO_BARRA" },
+      { id: "5521999150387-1490619690@g.us", class: "RECREIO_BARRA" },
+      { id: "5521964253033-1524608642@g.us", class: "RECREIO_BARRA" },
+      { id: "5521964429890-1571490849@g.us", class: "VARGENS" },
+      { id: "120363204631755901@g.us", class: "VARGENS" },
+      { id: "5521999014301-1583261245@g.us", class: "VARGENS" },
+      { id: "120363166930472489@g.us", class: "BARRA_OLIMPICA" },
+      { id: "5521999014301-1582451276@g.us", class: "BARRA_OLIMPICA" },
+      { id: "120363020895251858@g.us", class: "BARRA_OLIMPICA" },
+      { id: "5521970445787-1605316109@g.us", class: "BARRA_OLIMPICA" },
+      { id: "120363182260841786@g.us", class: "BARRA_OLIMPICA" },
+      // ─── grupos específicos exclusivos da account2 — adicione abaixo ───
     ],
   },
-  // conta3: { gruposGerais: [], gruposEspecificos: [] },
+  // account3: { myBsuid: "", generalGroups: [], specificGroups: [] },
 };
 
-if (!CONTAS[INSTANCIA]) {
-  console.error(`❌ Instância "${INSTANCIA}" não encontrada em CONTAS.`);
+if (!ACCOUNTS[INSTANCE]) {
+  console.error(`❌ Instance "${INSTANCE}" not found in ACCOUNTS.`);
   process.exit(1);
 }
 
-console.log(`🤖 Iniciando instância: ${INSTANCIA}`);
+console.log(`🤖 Starting instance: ${INSTANCE}`);
 
 // ─────────────────────────────────────────────
 // GRUPOS POR INSTÂNCIA
 // ─────────────────────────────────────────────
-const GRUPOS_GERAIS = CONTAS[INSTANCIA].gruposGerais;
-const GRUPOS_ESPECIFICOS = CONTAS[INSTANCIA].gruposEspecificos;
+const GENERAL_GROUPS = ACCOUNTS[INSTANCE].generalGroups;
+const SPECIFIC_GROUPS = ACCOUNTS[INSTANCE].specificGroups;
 
 // ─────────────────────────────────────────────
 // PALAVRAS-CHAVE por classe de bairro
 // Adicione variações de nome conforme aparecem nos anúncios
 // ─────────────────────────────────────────────
-const BAIRROS_CLASSE = {
+const NEIGHBORHOOD_CLASSES = {
   JACAREPAGUA: [
     "jacarepaguá",
     "jacarepagua",
@@ -200,100 +204,104 @@ const BAIRROS_CLASSE = {
  * Extrai o bairro do anúncio.
  * Busca pelo padrão _Bairro_ (itálico WhatsApp) na mensagem.
  */
-function extrairBairro(texto) {
-  // Captura o conteúdo entre _ _ na primeira ocorrência
-  const match = texto.match(/_([^_]+)_/);
+function extractNeighborhood(text) {
+  const match = text.match(/_([^_]+)_/);
   return match ? match[1].trim().toLowerCase() : null;
 }
 
 /**
  * Classifica o bairro extraído em uma das classes configuradas.
- * Retorna "GERAL" se não encontrar correspondência.
+ * Retorna "GENERAL" se não encontrar correspondência.
  */
-function classificarBairro(bairro) {
-  if (!bairro) return "GERAL";
-  const bairroNorm = bairro
+function classifyNeighborhood(neighborhood) {
+  if (!neighborhood) return "GENERAL";
+  const normalized = neighborhood
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "");
 
-  for (const [classe, palavras] of Object.entries(BAIRROS_CLASSE)) {
-    if (classe === "RECREIO_BARRA") continue; // classe definida pelos grupos
-    for (const palavra of palavras) {
-      const palavraNorm = palavra
+  for (const [cls, keywords] of Object.entries(NEIGHBORHOOD_CLASSES)) {
+    if (cls === "RECREIO_BARRA") continue; // classe definida pelos grupos
+    for (const keyword of keywords) {
+      const keyNorm = keyword
         .toLowerCase()
         .normalize("NFD")
         .replace(/[\u0300-\u036f]/g, "");
-      if (
-        bairroNorm.includes(palavraNorm) ||
-        palavraNorm.includes(bairroNorm)
-      ) {
-        return classe;
+      if (normalized.includes(keyNorm) || keyNorm.includes(normalized)) {
+        return cls;
       }
     }
   }
-  return "GERAL";
+  return "GENERAL";
 }
 
 /**
  * Monta a lista final de grupos para um anúncio,
  * combinando grupos gerais + específicos elegíveis.
+ * Usa Set para evitar duplicatas.
  */
-function resolverGrupos(classeAnuncio) {
-  const especificosElegiveis = GRUPOS_ESPECIFICOS.filter((g) => {
-    if (classeAnuncio === "GERAL") return false; // sem classe → só grupos gerais
-    if (g.classe === classeAnuncio) return true; // classe exata → inclui
+function resolveGroups(announcementClass) {
+  const eligible = SPECIFIC_GROUPS.filter((g) => {
+    if (announcementClass === "GENERAL") return false; // sem classe → só grupos gerais
+    if (g.class === announcementClass) return true; // classe exata → inclui
     if (
-      g.classe === "RECREIO_BARRA" &&
-      (classeAnuncio === "BARRA" || classeAnuncio === "RECREIO")
+      g.class === "RECREIO_BARRA" &&
+      (announcementClass === "BARRA" || announcementClass === "RECREIO")
     )
       return true;
-    return false; // outra classe → exclui
+    return false;
   }).map((g) => g.id);
 
-  return [...GRUPOS_GERAIS, ...especificosElegiveis];
+  // Deduplica usando Set
+  return [...new Set([...GENERAL_GROUPS, ...eligible])];
 }
 
 // ─────────────────────────────────────────────
 // ANTI-BAN: horários com jitter aleatório
-// Regenerados a cada dia para evitar padrão fixo
+// Regenerados apenas no reset diário (19h) ou !clear
+// Reiniciar o bot NÃO regenera os horários — eles são persistidos em disco
 // ─────────────────────────────────────────────
-function gerarHorarios() {
+function generateSchedule() {
   const base = [
-    { hora: 9, minuto: 0 },
-    { hora: 10, minuto: 0 },
-    { hora: 11, minuto: 0 },
-    { hora: 12, minuto: 0 },
-    { hora: 13, minuto: 0 },
-    { hora: 14, minuto: 0 },
-    { hora: 15, minuto: 0 },
-    { hora: 16, minuto: 0 },
-    { hora: 17, minuto: 0 },
-    { hora: 18, minuto: 0 },
+    { hour: 9, minute: 0 },
+    { hour: 10, minute: 0 },
+    { hour: 11, minute: 0 },
+    { hour: 12, minute: 0 },
+    { hour: 13, minute: 0 },
+    { hour: 14, minute: 0 },
+    { hour: 15, minute: 0 },
+    { hour: 16, minute: 0 },
+    { hour: 17, minute: 0 },
+    { hour: 18, minute: 0 },
   ];
-  return base.map(({ hora, minuto }) => {
-    const jitter = Math.floor(Math.random() * 30);
-    const novoMinuto = minuto + jitter;
-    return `${String(hora).padStart(2, "0")}:${String(novoMinuto).padStart(2, "0")}`;
+  return base.map(({ hour, minute }) => {
+    const jitter = Math.floor(Math.random() * 30); // 0–29 min
+    const newMinute = minute + jitter;
+    return `${String(hour).padStart(2, "0")}:${String(newMinute).padStart(2, "0")}`;
   });
 }
 
-let HORARIOS = gerarHorarios();
-
-// Arquivo onde as mensagens do dia ficam salvas
-const FILA_PATH = path.join(__dirname, `fila-${INSTANCIA}.json`);
-// Arquivo de log
-const LOG_PATH = path.join(__dirname, `log-${INSTANCIA}.json`);
+// ─────────────────────────────────────────────
+// ARQUIVOS DE ESTADO
+// ─────────────────────────────────────────────
+const QUEUE_PATH = path.join(__dirname, `queue-${INSTANCE}.json`);
+const LOG_PATH = path.join(__dirname, `log-${INSTANCE}.json`);
+const SCHEDULE_PATH = path.join(__dirname, `schedule-${INSTANCE}.json`);
 
 // ─────────────────────────────────────────────
 // ESTADO INTERNO
 // ─────────────────────────────────────────────
 
-let filaHoje = [];
-let disparosFeitos = 0;
+let todayQueue = [];
+let dispatchesDone = 0;
+let SCHEDULE = [];
 
-// FIX 1: Set para evitar processar a mesma mensagem duas vezes
-const mensagensProcessadas = new Set();
+// Controle de disparo sequencial — garante que um disparo só começa quando o anterior terminar
+let dispatchRunning = false;
+const pendingDispatches = [];
+
+// Set para evitar processar a mesma mensagem duas vezes
+const processedMessages = new Set();
 
 // ─────────────────────────────────────────────
 // HELPERS
@@ -304,41 +312,58 @@ function sleep(ms) {
 }
 
 // ANTI-BAN: embaralha a ordem de envio dos grupos
-function embaralhar(array) {
+function shuffle(array) {
   return [...array].sort(() => Math.random() - 0.5);
 }
 
-function log(tipo, detalhe) {
-  const entrada = {
-    ts: new Date().toISOString(),
-    tipo,
-    detalhe,
-  };
-  console.log(`[${entrada.ts}] [${tipo}]`, detalhe);
-
-  let logs = [];
-  try {
-    logs = JSON.parse(fs.readFileSync(LOG_PATH, "utf8"));
-  } catch {}
-  logs.unshift(entrada);
-  if (logs.length > 500) logs = logs.slice(0, 500);
-  fs.writeFileSync(LOG_PATH, JSON.stringify(logs, null, 2));
+// ANTI-BAN: micro variação invisível no texto para evitar detecção de mensagem duplicada pela META
+const INVISIBLE_CHARS = ["\u200B", "\u200C", "\u200D", "\uFEFF"];
+function microVary(text) {
+  const char =
+    INVISIBLE_CHARS[Math.floor(Math.random() * INVISIBLE_CHARS.length)];
+  const pos = Math.floor(Math.random() * (text.length - 1)) + 1;
+  return text.slice(0, pos) + char + text.slice(pos);
 }
 
-function salvarFila() {
-  fs.writeFileSync(FILA_PATH, JSON.stringify(filaHoje, null, 2));
+// ─────────────────────────────────────────────
+// LOG — assíncrono para não bloquear o event loop
+// ─────────────────────────────────────────────
+async function log(type, detail) {
+  const entry = { ts: new Date().toISOString(), type, detail };
+  console.log(`[${entry.ts}] [${type}]`, detail);
+
+  try {
+    let logs = [];
+    try {
+      const raw = await fsPromises.readFile(LOG_PATH, "utf8");
+      logs = JSON.parse(raw);
+    } catch {}
+    logs.unshift(entry);
+    if (logs.length > 500) logs = logs.slice(0, 500);
+    await fsPromises.writeFile(LOG_PATH, JSON.stringify(logs, null, 2));
+  } catch (err) {
+    console.error("[LOG ERROR]", err.message);
+  }
 }
 
-function carregarFila() {
+// ─────────────────────────────────────────────
+// PERSISTÊNCIA DA FILA — assíncrona
+// ─────────────────────────────────────────────
+async function saveQueue() {
+  await fsPromises.writeFile(QUEUE_PATH, JSON.stringify(todayQueue, null, 2));
+}
+
+function loadQueue() {
   try {
-    const data = JSON.parse(fs.readFileSync(FILA_PATH, "utf8"));
+    const data = JSON.parse(fs.readFileSync(QUEUE_PATH, "utf8"));
     if (data.length > 0) {
-      const primeiroTs = new Date(data[0].recebidoEm);
-      const hoje = new Date();
+      const firstTs = new Date(data[0].receivedAt);
+      const today = new Date();
+      // Valida se a fila é do mesmo dia — se não for, descarta
       if (
-        primeiroTs.getDate() === hoje.getDate() &&
-        primeiroTs.getMonth() === hoje.getMonth() &&
-        primeiroTs.getFullYear() === hoje.getFullYear()
+        firstTs.getDate() === today.getDate() &&
+        firstTs.getMonth() === today.getMonth() &&
+        firstTs.getFullYear() === today.getFullYear()
       ) {
         return data;
       }
@@ -347,15 +372,34 @@ function carregarFila() {
   return [];
 }
 
-function resetarDiario() {
-  filaHoje = [];
-  disparosFeitos = 0;
-  mensagensProcessadas.clear(); // limpa o Set também
-  HORARIOS = gerarHorarios(); // ANTI-BAN: regenera horários para o novo dia
-  salvarFila();
-  log(
+// ─────────────────────────────────────────────
+// PERSISTÊNCIA DO SCHEDULE — sobrevive a reinicializações
+// ─────────────────────────────────────────────
+function saveSchedule() {
+  fs.writeFileSync(SCHEDULE_PATH, JSON.stringify(SCHEDULE, null, 2));
+}
+
+function loadSchedule() {
+  try {
+    const data = JSON.parse(fs.readFileSync(SCHEDULE_PATH, "utf8"));
+    if (Array.isArray(data) && data.length === 10) return data;
+  } catch {}
+  return null;
+}
+
+// ─────────────────────────────────────────────
+// RESET DIÁRIO — só ocorre via cron das 19h ou !clear
+// ─────────────────────────────────────────────
+async function dailyReset() {
+  todayQueue = [];
+  dispatchesDone = 0;
+  processedMessages.clear();
+  SCHEDULE = generateSchedule(); // ANTI-BAN: regenera horários só no reset real
+  saveSchedule();
+  await saveQueue();
+  await log(
     "RESET",
-    `Fila e contadores zerados para o novo dia | Novos horários: ${HORARIOS.join(", ")}`,
+    `Queue and counters cleared | New schedule: ${SCHEDULE.join(", ")}`,
   );
 }
 
@@ -364,7 +408,7 @@ function resetarDiario() {
 // ─────────────────────────────────────────────
 
 const client = new Client({
-  authStrategy: new LocalAuth({ clientId: `scheduler-bot-${INSTANCIA}` }),
+  authStrategy: new LocalAuth({ clientId: `scheduler-bot-${INSTANCE}` }),
   puppeteer: {
     headless: true,
     args: ["--no-sandbox", "--disable-setuid-sandbox"],
@@ -379,25 +423,38 @@ client.on("qr", (qr) => {
 });
 
 client.on("ready", () => {
-  log("BOT", "Cliente WhatsApp pronto ✓");
-  meuBsuid = CONTAS[INSTANCIA].meuBsuid;
-  console.log("BSUID:", meuBsuid);
-  filaHoje = carregarFila();
-  // Recalcula disparosFeitos com base na fila carregada
-  disparosFeitos = filaHoje.filter((m) => m.status === "enviado").length;
+  log("BOT", "WhatsApp client ready ✓");
+  myBsuid = ACCOUNTS[INSTANCE].myBsuid;
+  console.log("BSUID:", myBsuid);
+
+  // Carrega a fila persistida — sobrevive a reinicializações
+  todayQueue = loadQueue();
+  dispatchesDone = todayQueue.filter((m) => m.status === "sent").length;
+
+  // Carrega o schedule persistido — se não existir, gera um novo
+  const savedSchedule = loadSchedule();
+  if (savedSchedule) {
+    SCHEDULE = savedSchedule;
+    log("BOT", `Schedule loaded from disk: ${SCHEDULE.join(", ")}`);
+  } else {
+    SCHEDULE = generateSchedule();
+    saveSchedule();
+    log("BOT", `Schedule generated: ${SCHEDULE.join(", ")}`);
+  }
+
   log(
     "BOT",
-    `Fila carregada: ${filaHoje.length} mensagem(ns) | ${disparosFeitos} já disparadas`,
+    `Queue: ${todayQueue.length} message(s) | ${dispatchesDone} already dispatched`,
   );
-  agendarDisparos();
+  scheduleDispatches();
 });
 
 client.on("auth_failure", (msg) => {
-  log("ERRO", `Falha de autenticação: ${msg}`);
+  log("ERROR", `Auth failure: ${msg}`);
 });
 
 client.on("disconnected", (reason) => {
-  log("AVISO", `Desconectado: ${reason}`);
+  log("WARN", `Disconnected: ${reason}`);
 });
 
 // ─────────────────────────────────────────────
@@ -405,96 +462,154 @@ client.on("disconnected", (reason) => {
 // ─────────────────────────────────────────────
 
 client.on("message_create", async (msg) => {
-  meuId = client.info.wid._serialized;
+  const myId = client.info.wid._serialized;
 
-  if (!msg.fromMe || (msg.to !== meuBsuid && msg.to !== meuId)) return;
+  // Só processa mensagens enviadas pelo próprio número para si mesmo
+  if (!msg.fromMe || (msg.to !== myBsuid && msg.to !== myId)) return;
 
   // Ignora respostas automáticas do próprio bot (evita loop)
-  const prefixosBot = ["✅", "⚠️", "📊", "🗑️", "📋", "📤"];
-  if (prefixosBot.some((p) => msg.body.startsWith(p))) return;
+  const botPrefixes = ["✅", "⚠️", "📊", "🗑️", "📋", "📤"];
+  if (botPrefixes.some((p) => msg.body.startsWith(p))) return;
 
-  // FIX 1: ignora mensagem se já foi processada
+  // Ignora mensagem se já foi processada
   const msgId = msg.id._serialized;
-  if (mensagensProcessadas.has(msgId)) return;
-  mensagensProcessadas.add(msgId);
+  if (processedMessages.has(msgId)) return;
+  processedMessages.add(msgId);
+
+  const body = msg.body.trim().toLowerCase();
 
   // Comando: "!status"
-  if (msg.body.trim().toLowerCase() === "!status") {
+  if (body === "!status") {
     const status =
-      `📊 *Status do Bot*\n\n` +
-      `📨 Mensagens na fila: ${filaHoje.length}/10\n` +
-      `✅ Disparos realizados hoje: ${disparosFeitos}/${HORARIOS.length}\n` +
-      `⏳ Próximo disparo: ${proximoHorario()}\n\n` +
-      `_Mensagens agendadas:_\n` +
-      filaHoje.map((m, i) => `${i + 1}. ${m.preview}`).join("\n");
+      `📊 *Bot Status*\n\n` +
+      `📨 Queue: ${todayQueue.length}/10\n` +
+      `✅ Dispatches done today: ${dispatchesDone}/${SCHEDULE.length}\n` +
+      `⏳ Next dispatch: ${nextScheduledTime()}\n\n` +
+      `_Queued messages:_\n` +
+      todayQueue
+        .map((m, i) => `${i + 1}. [${m.status}] ${m.preview}`)
+        .join("\n");
     await msg.reply(status);
     return;
   }
 
-  // Comando: "!limpar"
-  if (msg.body.trim().toLowerCase() === "!limpar") {
-    filaHoje = [];
-    disparosFeitos = 0;
-    mensagensProcessadas.clear();
-    salvarFila();
-    await msg.reply("🗑️ Fila limpa com sucesso.");
-    log("COMANDO", "Fila limpa manualmente");
+  // Comando: "!clear"
+  if (body === "!clear") {
+    todayQueue = [];
+    dispatchesDone = 0;
+    processedMessages.clear();
+    SCHEDULE = generateSchedule();
+    saveSchedule();
+    await saveQueue();
+    await msg.reply("🗑️ Queue cleared successfully.");
+    await log("COMMAND", "Queue manually cleared");
     return;
   }
 
-  // Comando: "!grupos"
-  if (msg.body.trim().toLowerCase() === "!grupos") {
+  // Comando: "!groups"
+  if (body === "!groups") {
     const chats = await client.getChats();
-    const grupos = chats.filter((c) => c.isGroup);
-    const lista = grupos
+    const groups = chats.filter((c) => c.isGroup);
+    const list = groups
       .map((g) => `• ${g.name}\n  ID: \`${g.id._serialized}\``)
       .join("\n\n");
-    await msg.reply(`📋 *Grupos disponíveis:*\n\n${lista}`);
+    await msg.reply(`📋 *Available groups:*\n\n${list}`);
+    return;
+  }
+
+  // Comando: "!fire" ou "!fire <índice>"
+  // !fire    → dispara o próximo slot com status "waiting"
+  // !fire 3  → dispara o slot de índice 3 (1-based)
+  if (body.startsWith("!fire")) {
+    const parts = body.split(" ");
+    let targetIndex;
+
+    if (parts.length === 1) {
+      // Próximo slot pendente
+      targetIndex = todayQueue.findIndex((m) => m.status === "waiting");
+    } else {
+      const n = parseInt(parts[1], 10);
+      if (isNaN(n) || n < 1 || n > todayQueue.length) {
+        await msg.reply(
+          `⚠️ Invalid slot. Use *!fire* or *!fire <1–${todayQueue.length}>*.`,
+        );
+        return;
+      }
+      targetIndex = n - 1;
+    }
+
+    if (
+      targetIndex === -1 ||
+      targetIndex === undefined ||
+      targetIndex === null
+    ) {
+      await msg.reply("⚠️ No pending messages in queue.");
+      return;
+    }
+
+    const target = todayQueue[targetIndex];
+    if (!target) {
+      await msg.reply(`⚠️ Slot ${targetIndex + 1} not found in queue.`);
+      return;
+    }
+    if (target.status === "sent") {
+      await msg.reply(`⚠️ Slot ${targetIndex + 1} already sent.`);
+      return;
+    }
+    if (target.status === "sending") {
+      await msg.reply(
+        `⚠️ Slot ${targetIndex + 1} is currently being dispatched.`,
+      );
+      return;
+    }
+
+    await msg.reply(`📤 Firing slot ${targetIndex + 1} now...`);
+    await log("COMMAND", `Manual fire requested for slot ${targetIndex + 1}`);
+    queueDispatch(targetIndex);
     return;
   }
 
   // Mensagem normal → adiciona à fila
-  if (filaHoje.length >= 10) {
-    await msg.reply(
-      "⚠️ A fila já está cheia (10/10 mensagens). Envie *!limpar* para reiniciar.",
-    );
+  if (todayQueue.length >= 10) {
+    await msg.reply("⚠️ Queue is full (10/10). Send *!clear* to reset.");
     return;
   }
 
-  const bairroExtraido = extrairBairro(msg.body);
-  const classeAnuncio = classificarBairro(bairroExtraido);
-  const gruposDestino = resolverGrupos(classeAnuncio);
+  const neighborhood = extractNeighborhood(msg.body);
+  const announcementCls = classifyNeighborhood(neighborhood);
+  const targetGroups = resolveGroups(announcementCls);
 
-  const entrada = {
-    indice: filaHoje.length,
-    corpo: msg.body,
+  const entry = {
+    index: todayQueue.length,
+    body: msg.body,
     preview: msg.body.substring(0, 60) + (msg.body.length > 60 ? "…" : ""),
-    recebidoEm: new Date().toISOString(),
-    disparadoEm: null,
-    status: "aguardando",
-    bairro: bairroExtraido || "não identificado",
-    classe: classeAnuncio,
-    gruposDestino: gruposDestino,
+    receivedAt: new Date().toISOString(),
+    dispatchedAt: null,
+    status: "waiting",
+    neighborhood: neighborhood || "unidentified",
+    class: announcementCls,
+    targetGroups: targetGroups,
   };
 
-  filaHoje.push(entrada);
-  salvarFila();
+  todayQueue.push(entry);
+  await saveQueue();
 
-  const horarioDestinado = HORARIOS[entrada.indice] || "—";
-  const classeTexto =
-    classeAnuncio === "GERAL"
-      ? "⚠️ não identificado — só grupos gerais"
-      : `✅ *${classeAnuncio}*`;
+  const scheduledTime = SCHEDULE[entry.index] || "—";
+  const classText =
+    announcementCls === "GENERAL"
+      ? "⚠️ unidentified — general groups only"
+      : `✅ *${announcementCls}*`;
+
   await msg.reply(
-    `✅ *Mensagem ${filaHoje.length}/10 recebida!*\n\n` +
-      `📍 Bairro detectado: *${bairroExtraido || "não identificado"}*\n` +
-      `🏷️ Classe: ${classeTexto}\n` +
-      `📢 Grupos destino: *${gruposDestino.length}*\n\n` +
-      `⏰ Será disparada às *${horarioDestinado}*`,
+    `✅ *Message ${todayQueue.length}/10 received!*\n\n` +
+      `📍 Neighborhood: *${neighborhood || "unidentified"}*\n` +
+      `🏷️ Class: ${classText}\n` +
+      `📢 Target groups: *${targetGroups.length}*\n\n` +
+      `⏰ Scheduled for *${scheduledTime}*`,
   );
-  log(
-    "RECEBIDA",
-    `Msg ${filaHoje.length} | bairro: ${bairroExtraido} | classe: ${classeAnuncio} | grupos: ${gruposDestino.length}`,
+  await log(
+    "RECEIVED",
+    `Msg ${todayQueue.length} | neighborhood: ${neighborhood} | class: ${announcementCls} | groups: ${targetGroups.length}`,
   );
 });
 
@@ -502,75 +617,114 @@ client.on("message_create", async (msg) => {
 // AGENDAMENTO DOS DISPAROS
 // ─────────────────────────────────────────────
 
-function proximoHorario() {
-  const agora = new Date();
-  const hhmm = `${String(agora.getHours()).padStart(2, "0")}:${String(agora.getMinutes()).padStart(2, "0")}`;
-  const proximo = HORARIOS.find((h) => h > hhmm);
-  return proximo || "Nenhum hoje (todos passaram)";
+function nextScheduledTime() {
+  const now = new Date();
+  const hhmm = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+  const next = SCHEDULE.find((h) => h > hhmm);
+  return next || "None today (all passed)";
 }
 
-function agendarDisparos() {
-  HORARIOS.forEach((horario, indice) => {
-    const [hora, minuto] = horario.split(":");
-    const expressao = `${minuto} ${hora} * * *`;
+function scheduleDispatches() {
+  SCHEDULE.forEach((time, index) => {
+    const [hour, minute] = time.split(":");
+    const expression = `${minute} ${hour} * * *`;
 
     cron.schedule(
-      expressao,
+      expression,
       async () => {
-        await executarDisparo(indice);
+        await log("CRON", `Trigger for slot ${index + 1} (${time})`);
+        queueDispatch(index);
       },
       { timezone: "America/Sao_Paulo" },
     );
 
-    log("CRON", `Agendado slot ${indice + 1} para ${horario}`);
+    log("CRON", `Scheduled slot ${index + 1} at ${time}`);
   });
 
-  // Reset diário às 19:00 (após o último disparo)
-  cron.schedule("0 19 * * *", resetarDiario, { timezone: "America/Sao_Paulo" });
+  // Reset diário às 19:00 — único momento que regenera horários e limpa fila
+  cron.schedule("0 19 * * *", dailyReset, { timezone: "America/Sao_Paulo" });
 
-  log("CRON", `${HORARIOS.length} horários agendados ✓`);
+  log("CRON", `${SCHEDULE.length} slots scheduled ✓`);
 }
 
-async function executarDisparo(indice) {
-  log("DISPARO", `Iniciando slot ${indice + 1} (${HORARIOS[indice]})`);
+// ─────────────────────────────────────────────
+// FILA DE DISPAROS — garante execução sequencial
+// Um disparo só começa quando o anterior terminar completamente
+// ─────────────────────────────────────────────
+function queueDispatch(index) {
+  pendingDispatches.push(index);
+  processDispatchQueue();
+}
 
-  if (indice >= filaHoje.length) {
-    log("AVISO", `Slot ${indice + 1}: sem mensagem na fila para este horário`);
-    return;
+async function processDispatchQueue() {
+  // Se já há um disparo em andamento, aguarda — será retomado ao final do atual
+  if (dispatchRunning) return;
+  if (pendingDispatches.length === 0) return;
+
+  dispatchRunning = true;
+  const index = pendingDispatches.shift();
+
+  try {
+    await executeDispatch(index);
+  } catch (err) {
+    await log("ERROR", `Unhandled error in slot ${index + 1}: ${err.message}`);
+  } finally {
+    dispatchRunning = false;
+    // Processa o próximo da fila, se houver
+    if (pendingDispatches.length > 0) {
+      processDispatchQueue();
+    }
   }
+}
 
-  const mensagem = filaHoje[indice];
-
-  // FIX 2: proteção dupla contra disparo duplicado
-  if (mensagem.status === "enviado") {
-    log("AVISO", `Slot ${indice + 1}: já enviado, ignorando`);
-    return;
-  }
-
-  // Marca como "enviando" imediatamente para bloquear chamadas simultâneas
-  filaHoje[indice].status = "enviando";
-  salvarFila();
-
-  let sucessos = 0;
-  let falhas = 0;
-
-  // ANTI-BAN: embaralha a ordem de envio dos grupos
-  const gruposDestino = embaralhar(mensagem.gruposDestino || GRUPOS_GERAIS);
-
-  log(
-    "DISPARO",
-    `Slot ${indice + 1} | bairro: ${mensagem.bairro || "—"} | classe: ${mensagem.classe || "GERAL"} | ${gruposDestino.length} grupos`,
+async function executeDispatch(index) {
+  await log(
+    "DISPATCH",
+    `Starting slot ${index + 1} (${SCHEDULE[index] || "manual"})`,
   );
 
-  for (let i = 0; i < gruposDestino.length; i++) {
-    const grupoId = gruposDestino[i];
-    try {
-      const chat = await client.getChatById(grupoId);
-      await chat.sendMessage(mensagem.corpo);
-      log("ENVIADO", `Slot ${indice + 1} → ${chat.name || grupoId}`);
-      sucessos++;
+  if (index >= todayQueue.length) {
+    await log("WARN", `Slot ${index + 1}: no message in queue for this slot`);
+    return;
+  }
 
-      // ANTI-BAN: pausa longa a cada 5 envios para simular comportamento humano
+  const message = todayQueue[index];
+
+  // Proteção dupla contra disparo duplicado
+  if (message.status === "sent") {
+    await log("WARN", `Slot ${index + 1}: already sent, skipping`);
+    return;
+  }
+  if (message.status === "sending") {
+    await log("WARN", `Slot ${index + 1}: already in progress, skipping`);
+    return;
+  }
+
+  // Marca como "sending" imediatamente para bloquear chamadas simultâneas
+  todayQueue[index].status = "sending";
+  await saveQueue();
+
+  let successes = 0;
+  let failures = 0;
+
+  // ANTI-BAN: embaralha a ordem de envio dos grupos
+  const targetGroups = shuffle(message.targetGroups || GENERAL_GROUPS);
+
+  await log(
+    "DISPATCH",
+    `Slot ${index + 1} | neighborhood: ${message.neighborhood || "—"} | class: ${message.class || "GENERAL"} | ${targetGroups.length} groups`,
+  );
+
+  for (let i = 0; i < targetGroups.length; i++) {
+    const groupId = targetGroups[i];
+    try {
+      const chat = await client.getChatById(groupId);
+      // ANTI-BAN: micro variação no texto para evitar detecção de duplicata pela META
+      await chat.sendMessage(microVary(message.body));
+      await log("SENT", `Slot ${index + 1} → ${chat.name || groupId}`);
+      successes++;
+
+      // ANTI-BAN: pausa longa a cada 5 envios
       if ((i + 1) % 5 === 0) {
         await sleep(15000 + Math.random() * 20000); // 15–35s
       } else {
@@ -578,33 +732,33 @@ async function executarDisparo(indice) {
         await sleep(4000 + Math.random() * 8000); // 4–12s
       }
     } catch (err) {
-      log("ERRO", `Slot ${indice + 1} → ${grupoId}: ${err.message}`);
-      falhas++;
+      await log("ERROR", `Slot ${index + 1} → ${groupId}: ${err.message}`);
+      failures++;
     }
   }
 
-  // FIX 3: atualiza estado e incrementa contador UMA única vez, fora do loop
-  filaHoje[indice].status =
-    falhas === gruposDestino.length ? "erro" : "enviado";
-  filaHoje[indice].disparadoEm = new Date().toISOString();
-  filaHoje[indice].resultado = { sucessos, falhas };
-  disparosFeitos++; // ← fora do loop, incrementa 1 por slot
-  salvarFila();
+  // Atualiza estado e incrementa contador UMA única vez, fora do loop
+  todayQueue[index].status =
+    failures === targetGroups.length ? "error" : "sent";
+  todayQueue[index].dispatchedAt = new Date().toISOString();
+  todayQueue[index].result = { successes, failures };
+  dispatchesDone++;
+  await saveQueue();
 
-  log(
-    "DISPARO",
-    `Slot ${indice + 1} concluído — ${sucessos} ok, ${falhas} falhas`,
+  await log(
+    "DISPATCH",
+    `Slot ${index + 1} done — ${successes} ok, ${failures} failed`,
   );
 
   // Notifica via mensagem para si mesmo
   try {
-    const meuId = client.info.wid._serialized;
+    const myId = client.info.wid._serialized;
     await client.sendMessage(
-      meuId,
-      `📤 *Disparo ${indice + 1}/10 concluído* (${HORARIOS[indice]})\n\n` +
-        `✅ Enviado para ${sucessos} grupo(s)\n` +
-        (falhas > 0 ? `❌ Falhou em ${falhas} grupo(s)\n` : "") +
-        `📝 "${mensagem.preview}"`,
+      myId,
+      `📤 *Dispatch ${index + 1}/10 done* (${SCHEDULE[index] || "manual"})\n\n` +
+        `✅ Sent to ${successes} group(s)\n` +
+        (failures > 0 ? `❌ Failed in ${failures} group(s)\n` : "") +
+        `📝 "${message.preview}"`,
     );
   } catch {}
 }
