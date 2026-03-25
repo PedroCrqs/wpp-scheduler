@@ -8,3 +8,5 @@ ecosystem.config.js
 Thumbs.db
 .env
 .env.*
+queue*.json
+schedule*.json

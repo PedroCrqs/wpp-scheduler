@@ -3,6 +3,34 @@
 All notable changes to this project will be documented in this file.
 Based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [2.0.0] - 2026-03-25
+
+### Changed
+
+- Codebase migrated to English (variables, functions, commands, constants)
+- Commands renamed: `!status` → `!status`, `!limpar` → `!clear`, `!grupos` → `!groups`
+- Queue file renamed from `fila-{instance}.json` → `queue-{instance}.json`
+- Internal state fields renamed to English (`corpo` → `body`, `recebidoEm` → `receivedAt`, etc.)
+- `CONTAS` → `ACCOUNTS`, `INSTANCIA` → `INSTANCE`, `HORARIOS` → `SCHEDULE`
+- `gruposGerais` / `gruposEspecificos` → `generalGroups` / `specificGroups`
+- `classe` → `class`, `bairro` → `neighborhood`, `sucessos/falhas` → `successes/failures`
+
+### Added
+
+- `!fire` command — immediately dispatches the next pending slot
+- `!fire <n>` command — immediately dispatches slot n (1-based index)
+- Sequential dispatch queue (`pendingDispatches` + `dispatchRunning` flag) — next dispatch only starts after previous one fully completes
+- Schedule persistence via `schedule-{instance}.json` — bot restart no longer regenerates schedule times
+- `schedule-{instance}.json` is only regenerated on daily reset (19:00) or `!clear`
+
+### Fixed
+
+- Async file I/O (`fs.promises`) for log and queue writes — prevents event loop blocking that caused node-cron `missed execution` warnings
+- Duplicate group IDs now deduplicated via `Set` in `resolveGroups()`
+- `!status` now shows per-message status (`[waiting]`, `[sending]`, `[sent]`, `[error]`)
+
+---
+
 ## [1.8.0] - 2026-03-24
 
 ### Added
