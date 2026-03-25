@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 Based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [2.0.1] - 2026-03-25
+
+### Fixed
+
+- Preview generation now extracts structured title line (`*• ...* - _..._`) using regex instead of naive substring
+- Prevents inconsistent previews caused by variable message length and formatting
+
 ## [2.0.0] - 2026-03-25
 
 ### Changed
