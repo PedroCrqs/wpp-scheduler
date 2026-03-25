@@ -578,11 +578,12 @@ client.on("message_create", async (msg) => {
   const neighborhood = extractNeighborhood(msg.body);
   const announcementCls = classifyNeighborhood(neighborhood);
   const targetGroups = resolveGroups(announcementCls);
+  const previewMatch = msg.body.match(/\*•[^\n]+\* - _[^\n]+_/);
 
   const entry = {
     index: todayQueue.length,
     body: msg.body,
-    preview: msg.body.substring(0, 60) + (msg.body.length > 60 ? "…" : ""),
+    preview: previewMatch?.[0] ?? msg.body.substring(0, 60),
     receivedAt: new Date().toISOString(),
     dispatchedAt: null,
     status: "waiting",
