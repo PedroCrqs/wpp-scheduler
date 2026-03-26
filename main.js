@@ -357,14 +357,13 @@ function loadQueue() {
   try {
     const data = JSON.parse(fs.readFileSync(QUEUE_PATH, "utf8"));
     if (data.length > 0) {
-      const firstTs = new Date(data[0].receivedAt);
-      const today = new Date();
-      // Valida se a fila é do mesmo dia — se não for, descarta
-      if (
-        firstTs.getDate() === today.getDate() &&
-        firstTs.getMonth() === today.getMonth() &&
-        firstTs.getFullYear() === today.getFullYear()
-      ) {
+      // Compara datas no fuso de Brasília para evitar descarte incorreto
+      // quando receivedAt é madrugada UTC mas ainda é "hoje" em BRT
+      const toSPDate = (d) =>
+        new Date(d).toLocaleDateString("en-CA", {
+          timeZone: "America/Sao_Paulo",
+        });
+      if (toSPDate(data[0].receivedAt) === toSPDate(new Date())) {
         return data;
       }
     }
@@ -447,6 +446,31 @@ client.on("ready", () => {
     `Queue: ${todayQueue.length} message(s) | ${dispatchesDone} already dispatched`,
   );
   scheduleDispatches();
+
+  // Dispara imediatamente qualquer slot cujo horário já passou e ainda está waiting
+  // (protege contra restart depois do horário agendado)
+  const nowSP = new Date()
+    .toLocaleString("en-US", {
+      timeZone: "America/Sao_Paulo",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    })
+    .replace(",", "")
+    .trim(); // "HH:MM"
+
+  SCHEDULE.forEach((time, index) => {
+    if (time < nowSP) {
+      const msg = todayQueue[index];
+      if (msg && msg.status === "waiting") {
+        log(
+          "BOT",
+          `Slot ${index + 1} (${time}) missed — firing now (bot was offline)`,
+        );
+        queueDispatch(index);
+      }
+    }
+  });
 });
 
 client.on("auth_failure", (msg) => {
