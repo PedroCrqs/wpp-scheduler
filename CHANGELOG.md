@@ -3,6 +3,18 @@
 All notable changes to this project will be documented in this file.
 Based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [2.1.0] - 2026-03-26
+
+### Added
+
+- Catch-up mechanism for missed dispatch slots on restart
+- `scheduleDispatches()` now detects past slots still in `waiting` state and triggers them immediately
+
+### Fixed
+
+- Date comparison now uses `America/Sao_Paulo` timezone instead of UTC
+- Prevents messages from being incorrectly discarded near midnight boundary
+
 ## [2.0.1] - 2026-03-25
 
 ### Fixed
