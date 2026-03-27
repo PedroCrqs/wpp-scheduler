@@ -400,6 +400,8 @@ async function dailyReset() {
     "RESET",
     `Queue and counters cleared | New schedule: ${SCHEDULE.join(", ")}`,
   );
+  // Reagenda os CRONs com os novos horários — essencial para funcionar sem restart
+  scheduleDispatches();
 }
 
 // ─────────────────────────────────────────────
@@ -642,19 +644,33 @@ client.on("message_create", async (msg) => {
 // AGENDAMENTO DOS DISPAROS
 // ─────────────────────────────────────────────
 
+// Guarda as tarefas CRON dos slots para poder destruí-las no reset diário
+let slotCronTasks = [];
+
 function nextScheduledTime() {
-  const now = new Date();
-  const hhmm = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+  const hhmm = new Date()
+    .toLocaleString("en-US", {
+      timeZone: "America/Sao_Paulo",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    })
+    .replace(",", "")
+    .trim();
   const next = SCHEDULE.find((h) => h > hhmm);
   return next || "None today (all passed)";
 }
 
 function scheduleDispatches() {
+  // Destroi CRONs dos slots anteriores para evitar acúmulo entre dias
+  slotCronTasks.forEach((task) => task.destroy());
+  slotCronTasks = [];
+
   SCHEDULE.forEach((time, index) => {
     const [hour, minute] = time.split(":");
     const expression = `${minute} ${hour} * * *`;
 
-    cron.schedule(
+    const task = cron.schedule(
       expression,
       async () => {
         await log("CRON", `Trigger for slot ${index + 1} (${time})`);
@@ -663,11 +679,9 @@ function scheduleDispatches() {
       { timezone: "America/Sao_Paulo" },
     );
 
+    slotCronTasks.push(task);
     log("CRON", `Scheduled slot ${index + 1} at ${time}`);
   });
-
-  // Reset diário às 19:00 — único momento que regenera horários e limpa fila
-  cron.schedule("0 19 * * *", dailyReset, { timezone: "America/Sao_Paulo" });
 
   log("CRON", `${SCHEDULE.length} slots scheduled ✓`);
 }
@@ -801,5 +815,9 @@ console.log("██████╔╝╚██████╔╝   ██║   "
 console.log("╚═════╝  ╚═════╝    ╚═╝   ");
 console.log("  WhatsApp Scheduler Bot  ");
 console.log("");
+
+// Reset diário às 19:00 BRT — registrado uma única vez na inicialização
+// O próprio dailyReset chama scheduleDispatches() para reagendar os slots do novo dia
+cron.schedule("0 19 * * *", dailyReset, { timezone: "America/Sao_Paulo" });
 
 client.initialize();
