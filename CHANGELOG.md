@@ -3,6 +3,15 @@
 All notable changes to this project will be documented in this file.
 Based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [2.1.1] - 2026-03-27
+
+### Fixed
+
+- **Persistent Scheduling Bug:** Fixed critical issue where the bot stopped dispatching after the first day without a manual restart.
+- **Dynamic Re-scheduling:** `dailyReset()` now explicitly calls `scheduleDispatches()` to register the new day's random time slots.
+- **CRON Resource Management:** `scheduleDispatches()` now tracks and destroys previous `node-cron` instances before creating new ones, preventing "ghost" triggers from firing at old times.
+- **Trigger Isolation:** Moved the master daily reset CRON (19:00) out of the `scheduleDispatches` scope to global initialization to ensure the reset logic itself remains stable and unique.
+
 ## [2.1.0] - 2026-03-26
 
 ### Added
