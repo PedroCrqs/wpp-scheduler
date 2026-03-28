@@ -104,7 +104,6 @@ async function executeDispatch(index) {
     }
   }
 
-  // Atualiza estado e incrementa contador UMA única vez, fora do loop
   state.todayQueue[index].status =
     failures === targetGroups.length ? "error" : "sent";
   state.todayQueue[index].dispatchedAt = new Date().toISOString();
