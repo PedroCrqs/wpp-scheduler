@@ -3,6 +3,14 @@
 All notable changes to this project will be documented in this file.
 Based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [2.1.2] - 2026-03-28
+
+### Fixed
+
+- **Dispatch Queue Race Condition:** Fixed critical bug where a slot could be silently dropped when its CRON trigger fired while another dispatch was already running.
+- **Root cause:** `processDispatchQueue()` was called recursively without `await` inside the `finally` block — under certain Node.js event loop timing, `pendingDispatches` appeared empty at the moment of the recursive call, leaving the slot permanently stuck.
+- **Fix:** Replaced the recursive pattern with a `while` loop that drains the entire `pendingDispatches` queue sequentially. Any slot added during an active dispatch is guaranteed to be picked up when the current one finishes.
+
 ## [2.1.1] - 2026-03-27
 
 ### Fixed
