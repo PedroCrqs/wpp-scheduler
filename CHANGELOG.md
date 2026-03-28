@@ -17,6 +17,8 @@ Based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - shuffle() replaced with unbiased Fisher-Yates algorithm
 - ready handler made async for proper log sequencing
 - Removed dead code: BARRA_E_OLIMPICA class
+- Runtime data (queues, schedules, logs, sessions) moved from project root into `data/` subdirectories — prevents data files from mixing with source code and avoids accidental commits of sensitive session data
+- `LocalAuth` now receives an explicit `dataPath` pointing to `data/sessions/` — session location is no longer dependent on `process.cwd()`, making PM2 and multi-directory setups reliable
 
 ## [2.1.2] - 2026-03-28
 

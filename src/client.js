@@ -2,7 +2,7 @@ const { Client, LocalAuth } = require("whatsapp-web.js");
 const qrcode = require("qrcode-terminal");
 const cron = require("node-cron");
 const state = require("./state");
-const { INSTANCE, ACCOUNTS } = require("./config");
+const { INSTANCE, ACCOUNTS, SESSIONS_DIR } = require("./config");
 const persistence = require("./persistence");
 const {
   generateSchedule,
@@ -23,7 +23,10 @@ const {
 } = require("./commands");
 
 const client = new Client({
-  authStrategy: new LocalAuth({ clientId: `scheduler-bot-${INSTANCE}` }),
+  authStrategy: new LocalAuth({
+    clientId: `scheduler-bot-${INSTANCE}`,
+    dataPath: SESSIONS_DIR,
+  }),
   puppeteer: {
     headless: true,
     args: ["--no-sandbox", "--disable-setuid-sandbox"],
