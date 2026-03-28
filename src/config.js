@@ -1,8 +1,10 @@
+const path = require("path");
+
+const INSTANCE = process.argv[2] || "account1";
+
 const QUEUE_PATH = path.join(__dirname, `queue-${INSTANCE}.json`);
 const LOG_PATH = path.join(__dirname, `log-${INSTANCE}.json`);
 const SCHEDULE_PATH = path.join(__dirname, `schedule-${INSTANCE}.json`);
-
-const INSTANCE = process.argv[2] || "account1";
 
 const ACCOUNTS = {
   account1: {

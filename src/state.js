@@ -7,6 +7,7 @@ const state = {
   processedMessages: new Set(),
   slotCronTasks: [],
   myBsuid: null,
+  client: null,
 };
 
 module.exports = state;

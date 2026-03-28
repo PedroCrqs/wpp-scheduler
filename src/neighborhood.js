@@ -1,8 +1,8 @@
-import {
+const {
   GENERAL_GROUPS,
   SPECIFIC_GROUPS,
   NEIGHBORHOOD_CLASSES,
-} from "config.js";
+} = require("./config");
 
 function extractNeighborhood(text) {
   const match = text.match(/_([^_]+)_/);
@@ -33,8 +33,8 @@ function classifyNeighborhood(neighborhood) {
 
 function resolveGroups(announcementClass) {
   const eligible = SPECIFIC_GROUPS.filter((g) => {
-    if (announcementClass === "GENERAL") return false; // sem classe → só grupos gerais
-    if (g.class === announcementClass) return true; // classe exata → inclui
+    if (announcementClass === "GENERAL") return false;
+    if (g.class === announcementClass) return true;
     if (
       g.class === "RECREIO_BARRA" &&
       (announcementClass === "BARRA" || announcementClass === "RECREIO")

@@ -1,7 +1,7 @@
-import state from state.js
-import * as config from config.js
-import * as helpers from helpers.js
-import * as persistence from persistence.js
+const state = require("./state");
+const { GENERAL_GROUPS } = require("./config");
+const { sleep, shuffle, microVary } = require("./helpers");
+const persistence = require("./persistence");
 
 function queueDispatch(index) {
   state.pendingDispatches.push(index);
@@ -32,11 +32,14 @@ async function processDispatchQueue() {
 async function executeDispatch(index) {
   await persistence.log(
     "DISPATCH",
-    `Starting slot ${index + 1} (${SCHEDULE[index] || "manual"})`,
+    `Starting slot ${index + 1} (${state.SCHEDULE[index] || "manual"})`,
   );
 
   if (index >= state.todayQueue.length) {
-    await persistence.log("WARN", `Slot ${index + 1}: no message in queue for this slot`);
+    await persistence.log(
+      "WARN",
+      `Slot ${index + 1}: no message in queue for this slot`,
+    );
     return;
   }
 
@@ -48,7 +51,10 @@ async function executeDispatch(index) {
     return;
   }
   if (message.status === "sending") {
-    await persistence.log("WARN", `Slot ${index + 1}: already in progress, skipping`);
+    await persistence.log(
+      "WARN",
+      `Slot ${index + 1}: already in progress, skipping`,
+    );
     return;
   }
 
@@ -62,10 +68,13 @@ async function executeDispatch(index) {
   // ANTI-BAN: embaralha a ordem de envio dos grupos
   const targetGroups = shuffle(message.targetGroups || GENERAL_GROUPS);
 
-  await log(
+  await persistence.log(
     "DISPATCH",
     `Slot ${index + 1} | neighborhood: ${message.neighborhood || "—"} | class: ${message.class || "GENERAL"} | ${targetGroups.length} groups`,
   );
+
+  // state.client é definido em src/client.js após a criação do Client
+  const client = state.client;
 
   for (let i = 0; i < targetGroups.length; i++) {
     const groupId = targetGroups[i];
@@ -73,7 +82,10 @@ async function executeDispatch(index) {
       const chat = await client.getChatById(groupId);
       // ANTI-BAN: micro variação no texto para evitar detecção de duplicata pela META
       await chat.sendMessage(microVary(message.body));
-      await log("SENT", `Slot ${index + 1} → ${chat.name || groupId}`);
+      await persistence.log(
+        "SENT",
+        `Slot ${index + 1} → ${chat.name || groupId}`,
+      );
       successes++;
 
       // ANTI-BAN: pausa longa a cada 5 envios
@@ -84,7 +96,10 @@ async function executeDispatch(index) {
         await sleep(4000 + Math.random() * 8000); // 4–12s
       }
     } catch (err) {
-      await log("ERROR", `Slot ${index + 1} → ${groupId}: ${err.message}`);
+      await persistence.log(
+        "ERROR",
+        `Slot ${index + 1} → ${groupId}: ${err.message}`,
+      );
       failures++;
     }
   }
@@ -107,10 +122,12 @@ async function executeDispatch(index) {
     const myId = client.info.wid._serialized;
     await client.sendMessage(
       myId,
-      `📤 *Dispatch ${index + 1}/10 done* (${SCHEDULE[index] || "manual"})\n\n` +
+      `📤 *Dispatch ${index + 1}/10 done* (${state.SCHEDULE[index] || "manual"})\n\n` +
         `✅ Sent to ${successes} group(s)\n` +
         (failures > 0 ? `❌ Failed in ${failures} group(s)\n` : "") +
         `📝 "${message.preview}"`,
     );
   } catch {}
 }
+
+module.exports = { queueDispatch, processDispatchQueue, executeDispatch };

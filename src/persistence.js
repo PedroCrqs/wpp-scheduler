@@ -1,3 +1,8 @@
+const fs = require("fs");
+const fsPromises = require("fs").promises;
+const { QUEUE_PATH, LOG_PATH, SCHEDULE_PATH } = require("./config");
+const state = require("./state");
+
 async function log(type, detail) {
   const entry = { ts: new Date().toISOString(), type, detail };
   console.log(`[${entry.ts}] [${type}]`, detail);
@@ -17,7 +22,10 @@ async function log(type, detail) {
 }
 
 async function saveQueue() {
-  await fsPromises.writeFile(QUEUE_PATH, JSON.stringify(todayQueue, null, 2));
+  await fsPromises.writeFile(
+    QUEUE_PATH,
+    JSON.stringify(state.todayQueue, null, 2),
+  );
 }
 
 function loadQueue() {
@@ -39,7 +47,7 @@ function loadQueue() {
 }
 
 function saveSchedule() {
-  fs.writeFileSync(SCHEDULE_PATH, JSON.stringify(SCHEDULE, null, 2));
+  fs.writeFileSync(SCHEDULE_PATH, JSON.stringify(state.SCHEDULE, null, 2));
 }
 
 function loadSchedule() {
@@ -50,4 +58,4 @@ function loadSchedule() {
   return null;
 }
 
-module.exports = { log, saveQueue, loadQueue, saveQueue, loadSchedule };
+module.exports = { log, saveQueue, loadQueue, saveSchedule, loadSchedule };

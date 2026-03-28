@@ -2,6 +2,27 @@ const { Client, LocalAuth } = require("whatsapp-web.js");
 const qrcode = require("qrcode-terminal");
 const cron = require("node-cron");
 
+const state = require("./state");
+const { INSTANCE, ACCOUNTS } = require("./config");
+const persistence = require("./persistence");
+const {
+  generateSchedule,
+  scheduleDispatches,
+  dailyReset,
+} = require("./scheduler");
+const { queueDispatch } = require("./dispatcher");
+const {
+  extractNeighborhood,
+  classifyNeighborhood,
+  resolveGroups,
+} = require("./neighborhood");
+const {
+  handleStatus,
+  handleClear,
+  handleGroups,
+  handleFire,
+} = require("./commands");
+
 const client = new Client({
   authStrategy: new LocalAuth({ clientId: `scheduler-bot-${INSTANCE}` }),
   puppeteer: {
@@ -10,6 +31,8 @@ const client = new Client({
   },
 });
 
+state.client = client;
+
 client.on("qr", (qr) => {
   console.log("\n══════════════════════════════════════════");
   console.log("  Escaneie o QR Code abaixo com o WhatsApp");
@@ -17,29 +40,40 @@ client.on("qr", (qr) => {
   qrcode.generate(qr, { small: true });
 });
 
-client.on("ready", () => {
-  log("BOT", "WhatsApp client ready ✓");
-  myBsuid = ACCOUNTS[INSTANCE].myBsuid;
-  console.log("BSUID:", myBsuid);
+client.on("ready", async () => {
+  await persistence.log("BOT", "WhatsApp client ready ✓");
+  state.myBsuid = ACCOUNTS[INSTANCE].myBsuid;
+  console.log("BSUID:", state.myBsuid);
 
-  todayQueue = loadQueue();
-  dispatchesDone = todayQueue.filter((m) => m.status === "sent").length;
+  state.todayQueue = persistence.loadQueue();
+  state.dispatchesDone = state.todayQueue.filter(
+    (m) => m.status === "sent",
+  ).length;
 
-  const savedSchedule = loadSchedule();
+  const savedSchedule = persistence.loadSchedule();
   if (savedSchedule) {
-    SCHEDULE = savedSchedule;
-    log("BOT", `Schedule loaded from disk: ${SCHEDULE.join(", ")}`);
+    state.SCHEDULE = savedSchedule;
+    await persistence.log(
+      "BOT",
+      `Schedule loaded from disk: ${state.SCHEDULE.join(", ")}`,
+    );
   } else {
-    SCHEDULE = generateSchedule();
-    saveSchedule();
-    log("BOT", `Schedule generated: ${SCHEDULE.join(", ")}`);
+    state.SCHEDULE = generateSchedule();
+    persistence.saveSchedule();
+    await persistence.log(
+      "BOT",
+      `Schedule generated: ${state.SCHEDULE.join(", ")}`,
+    );
   }
 
-  log(
+  await persistence.log(
     "BOT",
-    `Queue: ${todayQueue.length} message(s) | ${dispatchesDone} already dispatched`,
+    `Queue: ${state.todayQueue.length} message(s) | ${state.dispatchesDone} already dispatched`,
   );
-  scheduleDispatches();
+  await scheduleDispatches();
+
+  // reset diário
+  cron.schedule("0 19 * * *", dailyReset, { timezone: "America/Sao_Paulo" });
 
   const nowSP = new Date()
     .toLocaleString("en-US", {
@@ -51,11 +85,11 @@ client.on("ready", () => {
     .replace(",", "")
     .trim(); // "HH:MM"
 
-  SCHEDULE.forEach((time, index) => {
+  state.SCHEDULE.forEach((time, index) => {
     if (time < nowSP) {
-      const msg = todayQueue[index];
+      const msg = state.todayQueue[index];
       if (msg && msg.status === "waiting") {
-        log(
+        persistence.log(
           "BOT",
           `Slot ${index + 1} (${time}) missed — firing now (bot was offline)`,
         );
@@ -66,28 +100,44 @@ client.on("ready", () => {
 });
 
 client.on("auth_failure", (msg) => {
-  log("ERROR", `Auth failure: ${msg}`);
+  persistence.log("ERROR", `Auth failure: ${msg}`);
 });
 
 client.on("disconnected", (reason) => {
-  log("WARN", `Disconnected: ${reason}`);
+  persistence.log("WARN", `Disconnected: ${reason}`);
 });
 
 client.on("message_create", async (msg) => {
   const myId = client.info.wid._serialized;
 
-  if (!msg.fromMe || (msg.to !== myBsuid && msg.to !== myId)) return;
+  if (!msg.fromMe || (msg.to !== state.myBsuid && msg.to !== myId)) return;
 
   const botPrefixes = ["✅", "⚠️", "📊", "🗑️", "📋", "📤"];
   if (botPrefixes.some((p) => msg.body.startsWith(p))) return;
 
   const msgId = msg.id._serialized;
-  if (processedMessages.has(msgId)) return;
-  processedMessages.add(msgId);
+  if (state.processedMessages.has(msgId)) return;
+  state.processedMessages.add(msgId);
 
-  const body = msg.body.trim().toLowerCase();
+  // comandos de controle
+  if (msg.body === "!status") {
+    await handleStatus(msg);
+    return;
+  }
+  if (msg.body === "!clear") {
+    await handleClear(msg);
+    return;
+  }
+  if (msg.body === "!groups") {
+    await handleGroups(client, msg);
+    return;
+  }
+  if (msg.body.startsWith("!fire")) {
+    await handleFire(msg);
+    return;
+  }
 
-  if (todayQueue.length >= 10) {
+  if (state.todayQueue.length >= 10) {
     await msg.reply("⚠️ Queue is full (10/10). Send *!clear* to reset.");
     return;
   }
@@ -98,7 +148,7 @@ client.on("message_create", async (msg) => {
   const previewMatch = msg.body.match(/\*•[^\n]+\* - _[^\n]+_/);
 
   const entry = {
-    index: todayQueue.length,
+    index: state.todayQueue.length,
     body: msg.body,
     preview: previewMatch?.[0] ?? msg.body.substring(0, 60),
     receivedAt: new Date().toISOString(),
@@ -109,24 +159,26 @@ client.on("message_create", async (msg) => {
     targetGroups: targetGroups,
   };
 
-  todayQueue.push(entry);
-  await saveQueue();
+  state.todayQueue.push(entry);
+  await persistence.saveQueue();
 
-  const scheduledTime = SCHEDULE[entry.index] || "—";
+  const scheduledTime = state.SCHEDULE[entry.index] || "—";
   const classText =
     announcementCls === "GENERAL"
       ? "⚠️ unidentified — general groups only"
       : `✅ *${announcementCls}*`;
 
   await msg.reply(
-    `✅ *Message ${todayQueue.length}/10 received!*\n\n` +
+    `✅ *Message ${state.todayQueue.length}/10 received!*\n\n` +
       `📍 Neighborhood: *${neighborhood || "unidentified"}*\n` +
       `🏷️ Class: ${classText}\n` +
       `📢 Target groups: *${targetGroups.length}*\n\n` +
       `⏰ Scheduled for *${scheduledTime}*`,
   );
-  await log(
+  await persistence.log(
     "RECEIVED",
-    `Msg ${todayQueue.length} | neighborhood: ${neighborhood} | class: ${announcementCls} | groups: ${targetGroups.length}`,
+    `Msg ${state.todayQueue.length} | neighborhood: ${neighborhood} | class: ${announcementCls} | groups: ${targetGroups.length}`,
   );
 });
+
+module.exports = { client };

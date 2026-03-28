@@ -16,6 +16,7 @@ function shuffle(array) {
 }
 
 function microVary(text) {
+  if (!text || text.length < 2) return text;
   const char =
     INVISIBLE_CHARS[Math.floor(Math.random() * INVISIBLE_CHARS.length)];
   const pos = Math.floor(Math.random() * (text.length - 1)) + 1;

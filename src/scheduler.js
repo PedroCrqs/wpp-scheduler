@@ -1,6 +1,6 @@
-import state from state.js
-import * as config from config.js
-import * as persistence from persistence.js
+const cron = require("node-cron");
+const state = require("./state");
+const persistence = require("./persistence");
 
 function generateSchedule() {
   const base = [
@@ -36,40 +36,52 @@ function nextScheduledTime() {
   return next || "None today (all passed)";
 }
 
-function scheduleDispatches() {
+async function scheduleDispatches() {
+  // Lazy require to avoid circular dependency (dispatcher → scheduler → dispatcher)
+  const { queueDispatch } = require("./dispatcher");
+
   state.slotCronTasks.forEach((task) => task.destroy());
   state.slotCronTasks = [];
 
-  SCHEDULE.forEach((time, index) => {
+  state.SCHEDULE.forEach((time, index) => {
     const [hour, minute] = time.split(":");
     const expression = `${minute} ${hour} * * *`;
 
     const task = cron.schedule(
       expression,
       async () => {
-        await log("CRON", `Trigger for slot ${index + 1} (${time})`);
+        await persistence.log(
+          "CRON",
+          `Trigger for slot ${index + 1} (${time})`,
+        );
         queueDispatch(index);
       },
       { timezone: "America/Sao_Paulo" },
     );
 
     state.slotCronTasks.push(task);
-    log("CRON", `Scheduled slot ${index + 1} at ${time}`);
   });
 
-  log("CRON", `${state.SCHEDULE.length} slots scheduled ✓`);
+  await persistence.log("CRON", `${state.SCHEDULE.length} slots scheduled ✓`);
 }
 
 async function dailyReset() {
   state.todayQueue = [];
   state.dispatchesDone = 0;
   state.processedMessages.clear();
-  state.SCHEDULE = generateSchedule(); 
+  state.SCHEDULE = generateSchedule();
   persistence.saveSchedule();
   await persistence.saveQueue();
   await persistence.log(
     "RESET",
-    `Queue and counters cleared | New schedule: ${SCHEDULE.join(", ")}`,
+    `Queue and counters cleared | New schedule: ${state.SCHEDULE.join(", ")}`,
   );
-  scheduleDispatches();
+  await scheduleDispatches();
 }
+
+module.exports = {
+  generateSchedule,
+  nextScheduledTime,
+  scheduleDispatches,
+  dailyReset,
+};
