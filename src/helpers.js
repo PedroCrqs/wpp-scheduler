@@ -21,3 +21,5 @@ function microVary(text) {
   const pos = Math.floor(Math.random() * (text.length - 1)) + 1;
   return text.slice(0, pos) + char + text.slice(pos);
 }
+
+module.exports = { INVISIBLE_CHARS, sleep, shuffle, microVary };
