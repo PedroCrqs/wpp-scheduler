@@ -10,3 +10,4 @@ Thumbs.db
 .env.*
 queue*.json
 schedule*.json
+sessions/
