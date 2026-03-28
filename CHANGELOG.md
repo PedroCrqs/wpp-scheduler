@@ -3,13 +3,16 @@
 All notable changes to this project will be documented in this file.
 Based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [3.0.0] - 2026-XX-XX
+## [3.0.0] - 2026-03-28
 
 ### Changed (Breaking)
 
 - Refactored monolithic main.js into modular architecture (src/)
 - New entry point: index.js
 - Centralized mutable state in src/state.js
+- Refactored the scheduling logic for better performance.
+- Improved error handling and logging.
+- Updated dependencies for security and performance improvements.
 
 ### Fixed
 
@@ -19,6 +22,7 @@ Based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Removed dead code: BARRA_E_OLIMPICA class
 - Runtime data (queues, schedules, logs, sessions) moved from project root into `data/` subdirectories — prevents data files from mixing with source code and avoids accidental commits of sensitive session data
 - `LocalAuth` now receives an explicit `dataPath` pointing to `data/sessions/` — session location is no longer dependent on `process.cwd()`, making PM2 and multi-directory setups reliable
+- Minor documentation updates.
 
 ## [2.1.2] - 2026-03-28
 
