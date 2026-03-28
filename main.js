@@ -698,20 +698,17 @@ function queueDispatch(index) {
 async function processDispatchQueue() {
   // Se já há um disparo em andamento, aguarda — será retomado ao final do atual
   if (dispatchRunning) return;
-  if (pendingDispatches.length === 0) return;
 
-  dispatchRunning = true;
-  const index = pendingDispatches.shift();
-
-  try {
-    await executeDispatch(index);
-  } catch (err) {
-    await log("ERROR", `Unhandled error in slot ${index + 1}: ${err.message}`);
-  } finally {
-    dispatchRunning = false;
-    // Processa o próximo da fila, se houver
-    if (pendingDispatches.length > 0) {
-      processDispatchQueue();
+  // Loop para drenar toda a fila sem recursão (evita race condition)
+  while (pendingDispatches.length > 0) {
+    dispatchRunning = true;
+    const index = pendingDispatches.shift();
+    try {
+      await executeDispatch(index);
+    } catch (err) {
+      await log("ERROR", `Unhandled error in slot ${index + 1}: ${err.message}`);
+    } finally {
+      dispatchRunning = false;
     }
   }
 }
