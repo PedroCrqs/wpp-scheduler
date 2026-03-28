@@ -3,6 +3,21 @@
 All notable changes to this project will be documented in this file.
 Based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [3.0.0] - 2026-XX-XX
+
+### Changed (Breaking)
+
+- Refactored monolithic main.js into modular architecture (src/)
+- New entry point: index.js
+- Centralized mutable state in src/state.js
+
+### Fixed
+
+- !clear command now re-schedules cron tasks after generating new schedule
+- shuffle() replaced with unbiased Fisher-Yates algorithm
+- ready handler made async for proper log sequencing
+- Removed dead code: BARRA_E_OLIMPICA class
+
 ## [2.1.2] - 2026-03-28
 
 ### Fixed

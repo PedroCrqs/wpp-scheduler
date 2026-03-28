@@ -1,11 +1,11 @@
 {
   "name": "whatsapp-scheduler-bot",
-  "version": "2.1.2",
+  "version": "3.0.0",
   "description": "Bot WhatsApp para disparo de mensagens agendadas em grupos",
-  "main": "main.js",
+  "main": "index.js",
   "scripts": {
-    "start": "node main.js",
-    "dev": "node --watch main.js"
+    "start": "node index.js",
+    "dev": "node --watch index.js"
   },
   "dependencies": {
     "node-cron": "^4.2.1",
