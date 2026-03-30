@@ -8,6 +8,7 @@ const {
   generateSchedule,
   scheduleDispatches,
   dailyReset,
+  checkMissedDispatches,
 } = require("./scheduler");
 const { queueDispatch } = require("./dispatcher");
 const {
@@ -74,8 +75,13 @@ client.on("ready", async () => {
   );
   await scheduleDispatches();
 
-  // reset diário
-  cron.schedule("0 19 * * *", dailyReset, { timezone: "America/Sao_Paulo" });
+  if (!state.resetCronInitialized) {
+    state.resetCronInitialized = true;
+    cron.schedule("0 19 * * *", dailyReset, { timezone: "America/Sao_Paulo" });
+    cron.schedule("* * * * *", checkMissedDispatches, {
+      timezone: "America/Sao_Paulo",
+    });
+  }
 
   const nowSP = new Date()
     .toLocaleString("en-US", {
