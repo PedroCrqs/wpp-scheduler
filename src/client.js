@@ -8,6 +8,7 @@ const {
   generateSchedule,
   scheduleDispatches,
   dailyReset,
+  checkMissedDispatches,
 } = require("./scheduler");
 const { queueDispatch } = require("./dispatcher");
 const {
@@ -74,8 +75,17 @@ client.on("ready", async () => {
   );
   await scheduleDispatches();
 
-  // reset diário
-  cron.schedule("0 19 * * *", dailyReset, { timezone: "America/Sao_Paulo" });
+  // Guard against duplicate cron registration when WhatsApp reconnects and
+  // re-fires the "ready" event without a full process restart.
+  if (!state.resetCronInitialized) {
+    state.resetCronInitialized = true;
+    // Daily queue/schedule reset at 19:00 São Paulo time.
+    cron.schedule("0 19 * * *", dailyReset, { timezone: "America/Sao_Paulo" });
+    // Watchdog: recover any overdue dispatch that the slot cron missed.
+    cron.schedule("* * * * *", checkMissedDispatches, {
+      timezone: "America/Sao_Paulo",
+    });
+  }
 
   const nowSP = new Date()
     .toLocaleString("en-US", {

@@ -8,6 +8,7 @@ const state = {
   slotCronTasks: [],
   myBsuid: null,
   client: null,
+  resetCronInitialized: false,
 };
 
 module.exports = state;

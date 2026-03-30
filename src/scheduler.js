@@ -69,6 +69,8 @@ async function dailyReset() {
   state.todayQueue = [];
   state.dispatchesDone = 0;
   state.processedMessages.clear();
+  state.pendingDispatches = [];
+  state.dispatchRunning = false;
   state.SCHEDULE = generateSchedule();
   persistence.saveSchedule();
   await persistence.saveQueue();
@@ -79,9 +81,47 @@ async function dailyReset() {
   await scheduleDispatches();
 }
 
+// Watchdog: fires any overdue "waiting" slot during the active dispatch window.
+// Called every minute. Recovers from cron tasks that silently failed to fire.
+function checkMissedDispatches() {
+  const { queueDispatch } = require("./dispatcher");
+
+  const nowSP = new Date()
+    .toLocaleString("en-US", {
+      timeZone: "America/Sao_Paulo",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    })
+    .replace(",", "")
+    .trim();
+
+  // Only act during the active dispatch window to avoid premature firing of
+  // messages received after the 19:00 daily reset (meant for the next morning).
+  // Both `nowSP` and every entry in `state.SCHEDULE` are zero-padded "HH:MM"
+  // strings, so lexicographic comparison is equivalent to chronological order.
+  if (nowSP < "09:00" || nowSP >= "19:00") return;
+
+  state.SCHEDULE.forEach((time, index) => {
+    // Use strict less-than so the regular cron handles the exact-minute trigger;
+    // the watchdog only steps in for dispatches that are already overdue.
+    if (time < nowSP) {
+      const msg = state.todayQueue[index];
+      if (msg && msg.status === "waiting") {
+        persistence.log(
+          "WATCHDOG",
+          `Slot ${index + 1} (${time}) overdue — firing now`,
+        );
+        queueDispatch(index);
+      }
+    }
+  });
+}
+
 module.exports = {
   generateSchedule,
   nextScheduledTime,
   scheduleDispatches,
   dailyReset,
+  checkMissedDispatches,
 };
