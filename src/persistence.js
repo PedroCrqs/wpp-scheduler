@@ -32,13 +32,21 @@ function loadQueue() {
   try {
     const data = JSON.parse(fs.readFileSync(QUEUE_PATH, "utf8"));
     if (data.length > 0) {
-      // Compara datas no fuso de Brasília para evitar descarte incorreto
-      // quando receivedAt é madrugada UTC mas ainda é "hoje" em BRT
       const toSPDate = (d) =>
         new Date(d).toLocaleDateString("en-CA", {
           timeZone: "America/Sao_Paulo",
         });
-      if (toSPDate(data[0].receivedAt) === toSPDate(new Date())) {
+      const todaySP = toSPDate(new Date());
+      const receivedSP = toSPDate(data[0].receivedAt);
+      const yesterdaySP = toSPDate(new Date(Date.now() - 24 * 60 * 60 * 1000));
+      const hasUnsentMessages = data.some(
+        (m) => m.status === "waiting" || m.status === "sending",
+      );
+
+      if (
+        receivedSP === todaySP ||
+        (receivedSP === yesterdaySP && hasUnsentMessages)
+      ) {
         return data;
       }
     }
