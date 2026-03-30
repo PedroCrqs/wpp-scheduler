@@ -3,6 +3,23 @@
 All notable changes to this project will be documented in this file.
 Based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [3.0.3] - 2026-03-30
+
+### Fixed
+
+- **Cron Job Duplication:** Added `resetCronInitialized` flag to prevent multiple `dailyReset` instances from accumulating during WhatsApp reconnections.
+- **State Deadlock:** `dailyReset()` now explicitly clears `pendingDispatches` and resets `dispatchRunning` to `false`, preventing the bot from "freezing" on the following day.
+- **Self-Healing Watchdog:** Implemented `checkMissedDispatches()` running every minute between 09:00 and 19:00 BRT to recover from silent cron failures.
+- **Timezone Integrity:** Watchdog uses strict comparison to ensure it only triggers overdue slots, maintaining the 19:00 reset boundary for overnight messages.
+
+## [3.0.2] - 2026-03-30
+
+### Changed
+
+- **Root-level DATA_DIR:** Updated `DATA_DIR` to use `process.cwd()` instead of `__dirname`.
+- Ensures the `data/` folder is always created at the project root, regardless of whether `config.js` is inside `src/` or other subdirectories.
+- Improves compatibility with PM2 and different execution contexts.
+
 ## [3.0.1] - 2026-03-30
 
 ### Fixed
