@@ -3,6 +3,22 @@
 All notable changes to this project will be documented in this file.
 Based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [3.0.1] - 2026-03-30
+
+### Fixed
+
+- **DATA_DIR path resolution (config.js):**
+  - Fixed incorrect path resolution caused by `__dirname` inside `src/`
+  - `DATA_DIR` was resolving to `src/data/` instead of project root `data/`
+  - Updated to `path.join(__dirname, '..', 'data')` to ensure correct root-level data directory
+  - Prevents queues and runtime files from being written to the wrong location (`src/data/queues/`)
+
+- **Overnight queue discard bug (persistence.js):**
+  - Fixed issue where messages received after 21:00 BRT were incorrectly discarded the next morning
+  - Root cause: `receivedAt` stored in UTC (next day) while comparison used São Paulo date
+  - Queue loader now accepts "yesterday (BRT)" messages if they are still in `waiting` or `sending` state
+  - Ensures full coverage of the overnight receive window and prevents unintended data loss
+
 ## [3.0.0] - 2026-03-28
 
 ### Changed (Breaking)
