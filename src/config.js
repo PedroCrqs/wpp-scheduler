@@ -3,7 +3,7 @@ const fs = require("fs");
 
 const INSTANCE = process.argv[2] || "account1";
 
-const DATA_DIR = path.join(__dirname, "..", "data");
+const DATA_DIR = path.join(process.cwd(), "data");
 
 const QUEUES_DIR = path.join(DATA_DIR, "queues");
 const SCHEDULES_DIR = path.join(DATA_DIR, "schedules");
