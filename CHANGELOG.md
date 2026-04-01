@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 Based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [3.0.4] - 2026-03-31
+
+### Fixed
+
+- **Daily Reset Event Loop Blockage:** Converted `saveSchedule()` from synchronous `fs.writeFileSync()` to asynchronous `fsPromises.writeFile()` and added `await` in `dailyReset()`. Prevents I/O blocking that caused the 19:00 cron reset to be missed when other operations contended for disk access.
+
 ## [3.0.3] - 2026-03-30
 
 ### Fixed
