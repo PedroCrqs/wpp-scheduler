@@ -138,7 +138,11 @@ const ACCOUNTS = {
       { id: "120363182260841786@g.us", class: "BARRA_OLIMPICA" },
     ],
   },
-  // account3: { myBsuid: "", generalGroups: [], specificGroups: [] },
+  account3: {
+    myBsuid: "204388903727229@lid",
+    generalGroups: [],
+    specificGroups: [],
+  },
 };
 
 if (!ACCOUNTS[INSTANCE]) {

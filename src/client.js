@@ -118,6 +118,10 @@ client.on("disconnected", (reason) => {
 client.on("message_create", async (msg) => {
   const myId = client.info.wid._serialized;
 
+  // console.log(
+  //   `Received message from ${msg.from} to ${msg.to} | fromMe: ${msg.fromMe} | myId: ${myId}`,
+  // );
+
   if (!msg.fromMe || (msg.to !== state.myBsuid && msg.to !== myId)) return;
 
   const botPrefixes = ["✅", "⚠️", "📊", "🗑️", "📋", "📤"];
