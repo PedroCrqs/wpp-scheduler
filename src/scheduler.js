@@ -71,7 +71,7 @@ async function dailyReset() {
   state.pendingDispatches = [];
   state.dispatchRunning = false;
   state.SCHEDULE = generateSchedule();
-  persistence.saveSchedule();
+  await persistence.saveSchedule();
   await persistence.saveQueue();
   await persistence.log(
     "RESET",

@@ -54,8 +54,11 @@ function loadQueue() {
   return [];
 }
 
-function saveSchedule() {
-  fs.writeFileSync(SCHEDULE_PATH, JSON.stringify(state.SCHEDULE, null, 2));
+async function saveSchedule() {
+  await fsPromises.writeFile(
+    SCHEDULE_PATH,
+    JSON.stringify(state.SCHEDULE, null, 2)
+  );
 }
 
 function loadSchedule() {
