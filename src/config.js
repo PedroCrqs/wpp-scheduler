@@ -140,8 +140,27 @@ const ACCOUNTS = {
   },
   account3: {
     myBsuid: "204388903727229@lid",
-    generalGroups: [],
-    specificGroups: [],
+    generalGroups: [
+      "120363407395036814@g.us",
+      "120363144902599168@g.us",
+      "5521988642321-1587302497@g.us",
+      "5521988642321-1581686773@g.us",
+      "120363199259987610@g.us",
+      "120363282025326081@g.us",
+      "120363223801067906@g.us",
+      "120363236786201397@g.us",
+    ],
+    specificGroups: [
+      { id: "120363338501614013@g.us", class: "RECREIO_BARRA" },
+      { id: "120363217798784410@g.us", class: "RECREIO_BARRA" },
+      { id: "120363148863438858@g.us", class: "RECREIO_BARRA" },
+      { id: "5521970445787-1605316109@g.us", class: "BARRA" },
+      { id: "120363182260841786@g.us", class: "BARRA_OLIMPICA" },
+      { id: "5521970445787-1633040235@g.us", class: "RECREIO" },
+      { id: "120363204631755901@g.us", class: "VARGENS" },
+      { id: "5521965702281-1560781419@g.us", class: "VARGENS" },
+      { id: "120363166499761770@g.us", class: "JACAREPAGUA" },
+    ],
   },
 };
 
