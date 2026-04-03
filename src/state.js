@@ -8,6 +8,9 @@ const state = {
   slotCronTasks: [],
   myBsuid: null,
   client: null,
+  resetSchedulerInitialized: false,
+  resetTimer: null,
+  resetFiredAt: null,
   resetCronInitialized: false,
 };
 

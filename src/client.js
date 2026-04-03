@@ -7,8 +7,8 @@ const persistence = require("./persistence");
 const {
   generateSchedule,
   scheduleDispatches,
-  dailyReset,
   checkMissedDispatches,
+  initResetScheduler,
 } = require("./scheduler");
 const { queueDispatch } = require("./dispatcher");
 const {
@@ -75,15 +75,16 @@ client.on("ready", async () => {
   );
   await scheduleDispatches();
 
+  initResetScheduler();
+
   if (!state.resetCronInitialized) {
     state.resetCronInitialized = true;
-    cron.schedule("0 19 * * *", dailyReset, { timezone: "America/Sao_Paulo" });
     cron.schedule("* * * * *", checkMissedDispatches, {
       timezone: "America/Sao_Paulo",
     });
   }
 
-  const nowSP = new Date()
+  const current = new Date()
     .toLocaleString("en-US", {
       timeZone: "America/Sao_Paulo",
       hour: "2-digit",
@@ -91,10 +92,10 @@ client.on("ready", async () => {
       hour12: false,
     })
     .replace(",", "")
-    .trim(); // "HH:MM"
+    .trim();
 
   state.SCHEDULE.forEach((time, index) => {
-    if (time < nowSP) {
+    if (time < current) {
       const msg = state.todayQueue[index];
       if (msg && msg.status === "waiting") {
         persistence.log(
@@ -118,10 +119,6 @@ client.on("disconnected", (reason) => {
 client.on("message_create", async (msg) => {
   const myId = client.info.wid._serialized;
 
-  // console.log(
-  //   `Received message from ${msg.from} to ${msg.to} | fromMe: ${msg.fromMe} | myId: ${myId}`,
-  // );
-
   if (!msg.fromMe || (msg.to !== state.myBsuid && msg.to !== myId)) return;
 
   const botPrefixes = ["✅", "⚠️", "📊", "🗑️", "📋", "📤"];
@@ -131,7 +128,6 @@ client.on("message_create", async (msg) => {
   if (state.processedMessages.has(msgId)) return;
   state.processedMessages.add(msgId);
 
-  // comandos de controle
   if (msg.body === "!status") {
     await handleStatus(msg);
     return;

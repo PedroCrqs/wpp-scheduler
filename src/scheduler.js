@@ -2,6 +2,36 @@ const cron = require("node-cron");
 const state = require("./state");
 const persistence = require("./persistence");
 
+// ─────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────
+
+/** Retorna "HH:MM" no fuso America/Sao_Paulo */
+function nowSP() {
+  return new Date()
+    .toLocaleString("en-US", {
+      timeZone: "America/Sao_Paulo",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    })
+    .replace(",", "")
+    .trim();
+}
+
+/** Retorna quantos ms faltam até HH:MM no fuso SP (sempre no futuro, max 24h) */
+function msUntilSP(hh, mm) {
+  const now = new Date();
+  // Cria a data-alvo hoje em SP
+  const sp = new Date(
+    now.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }),
+  );
+  sp.setHours(hh, mm, 0, 0);
+  let diff = sp - now;
+  if (diff <= 0) diff += 24 * 60 * 60 * 1000; // já passou → amanhã
+  return diff;
+}
+
 function generateSchedule() {
   const base = [
     { hour: 9, minute: 0 },
@@ -23,16 +53,8 @@ function generateSchedule() {
 }
 
 function nextScheduledTime() {
-  const hhmm = new Date()
-    .toLocaleString("en-US", {
-      timeZone: "America/Sao_Paulo",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    })
-    .replace(",", "")
-    .trim();
-  const next = state.SCHEDULE.find((h) => h > hhmm);
+  const current = nowSP();
+  const next = state.SCHEDULE.find((h) => h > current);
   return next || "None today (all passed)";
 }
 
@@ -65,6 +87,8 @@ async function scheduleDispatches() {
 }
 
 async function dailyReset() {
+  await persistence.log("RESET", "Daily reset triggered (19:00 SP)");
+
   state.todayQueue = [];
   state.dispatchesDone = 0;
   state.processedMessages.clear();
@@ -78,25 +102,64 @@ async function dailyReset() {
     `Queue and counters cleared | New schedule: ${state.SCHEDULE.join(", ")}`,
   );
   await scheduleDispatches();
+
+  scheduleNextReset();
+}
+
+function scheduleNextReset() {
+  const RESET_HOUR = 19;
+  const RESET_MIN = 0;
+
+  const delay = msUntilSP(RESET_HOUR, RESET_MIN);
+
+  if (state.resetTimer) {
+    clearTimeout(state.resetTimer);
+    state.resetTimer = null;
+  }
+
+  persistence.log(
+    "RESET",
+    `Next daily reset scheduled in ${Math.round(delay / 60000)} min`,
+  );
+
+  state.resetTimer = setTimeout(async () => {
+    state.resetTimer = null;
+
+    const current = nowSP();
+    if (current < "19:00") {
+      persistence.log(
+        "RESET",
+        `setTimeout fired early (now ${current}) — retrying in 60s`,
+      );
+      state.resetTimer = setTimeout(scheduleNextReset, 60_000);
+      return;
+    }
+
+    if (state.resetFiredAt === current.slice(0, 5)) {
+      persistence.log("RESET", `Reset already fired at ${current} — skipping`);
+      scheduleNextReset();
+      return;
+    }
+    state.resetFiredAt = current.slice(0, 5); // "19:00"
+
+    await dailyReset();
+  }, delay);
+}
+
+function initResetScheduler() {
+  if (state.resetSchedulerInitialized) return;
+  state.resetSchedulerInitialized = true;
+  scheduleNextReset();
 }
 
 function checkMissedDispatches() {
   const { queueDispatch } = require("./dispatcher");
 
-  const nowSP = new Date()
-    .toLocaleString("en-US", {
-      timeZone: "America/Sao_Paulo",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    })
-    .replace(",", "")
-    .trim();
-
-  if (nowSP < "09:00" || nowSP >= "19:00") return;
+  const current = nowSP();
+  if (current < "09:00" || current >= "19:00") return;
 
   state.SCHEDULE.forEach((time, index) => {
-    if (time < nowSP) {
+    if (time < current) {
       const msg = state.todayQueue[index];
       if (msg && msg.status === "waiting") {
         persistence.log(
@@ -115,4 +178,5 @@ module.exports = {
   scheduleDispatches,
   dailyReset,
   checkMissedDispatches,
+  initResetScheduler,
 };
