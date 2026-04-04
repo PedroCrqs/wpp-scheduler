@@ -46,7 +46,7 @@ function generateSchedule() {
     { hour: 18, minute: 0 },
   ];
   return base.map(({ hour, minute }) => {
-    const jitter = Math.floor(Math.random() * 30); // 0–29 min
+    const jitter = Math.floor(Math.random() * 46); // 0–45 min
     const newMinute = minute + jitter;
     return `${String(hour).padStart(2, "0")}:${String(newMinute).padStart(2, "0")}`;
   });
@@ -162,11 +162,24 @@ function checkMissedDispatches() {
     if (time < current) {
       const msg = state.todayQueue[index];
       if (msg && msg.status === "waiting") {
+        const delayMinutes = Math.floor(Math.random() * 21) + 20; // 20 a 40 min
+        const delayMs = delayMinutes * 60 * 1000;
+
         persistence.log(
           "WATCHDOG",
-          `Slot ${index + 1} (${time}) overdue — firing now`,
+          `Slot ${index + 1} (${time}) overdue – firing in ${delayMinutes}min`,
         );
-        queueDispatch(index);
+
+        setTimeout(() => {
+          const currentMsg = state.todayQueue[index];
+          if (currentMsg && currentMsg.status === "waiting") {
+            persistence.log(
+              "WATCHDOG",
+              `Slot ${index + 1} (${time}) firing now after ${delayMinutes}min delay`,
+            );
+            queueDispatch(index);
+          }
+        }, delayMs);
       }
     }
   });
