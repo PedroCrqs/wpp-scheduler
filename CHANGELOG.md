@@ -8,6 +8,24 @@ Baseado em [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [3.1.1] - 2026-04-04
+
+### Changed
+
+- **Improved watchdog recovery for missed dispatches** _(scheduler.js)_
+  - Increased jitter range from 0–29 minutes to 0–45 minutes for better distribution.
+  - Changed immediate firing to delayed retry (20–40 min random) to prevent queue saturation.
+  - Added pre-dispatch validation to ensure message is still pending before execution.
+
+### Alterado
+
+- **Melhoria na recuperação de slots perdidos (watchdog)**
+  - Aumento do jitter de 0–29 para 0–45 minutos para melhor distribuição.
+  - Mudança de disparo imediato para tentativa com atraso (20–40 min aleatório) para evitar saturação.
+  - Validação pré-disparo para garantir que a mensagem ainda esteja pendente antes da execução.
+
+---
+
 ## [3.1.0] - 2026-04-03
 
 ### Changed
