@@ -12,6 +12,7 @@ const state = {
   resetTimer: null,
   resetFiredAt: null,
   resetCronInitialized: false,
+  watchdogScheduled: new Set(),
 };
 
 module.exports = state;

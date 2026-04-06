@@ -2,11 +2,6 @@ const cron = require("node-cron");
 const state = require("./state");
 const persistence = require("./persistence");
 
-// ─────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────
-
-/** Retorna "HH:MM" no fuso America/Sao_Paulo */
 function nowSP() {
   return new Date()
     .toLocaleString("en-US", {
@@ -19,16 +14,14 @@ function nowSP() {
     .trim();
 }
 
-/** Retorna quantos ms faltam até HH:MM no fuso SP (sempre no futuro, max 24h) */
 function msUntilSP(hh, mm) {
   const now = new Date();
-  // Cria a data-alvo hoje em SP
   const sp = new Date(
     now.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }),
   );
   sp.setHours(hh, mm, 0, 0);
   let diff = sp - now;
-  if (diff <= 0) diff += 24 * 60 * 60 * 1000; // já passou → amanhã
+  if (diff <= 0) diff += 24 * 60 * 60 * 1000;
   return diff;
 }
 
@@ -95,6 +88,7 @@ async function dailyReset() {
   state.pendingDispatches = [];
   state.dispatchRunning = false;
   state.SCHEDULE = generateSchedule();
+  state.watchdogScheduled = new Set();
   await persistence.saveSchedule();
   await persistence.saveQueue();
   await persistence.log(
@@ -159,28 +153,50 @@ function checkMissedDispatches() {
   if (current < "09:00" || current >= "19:00") return;
 
   state.SCHEDULE.forEach((time, index) => {
-    if (time < current) {
-      const msg = state.todayQueue[index];
-      if (msg && msg.status === "waiting") {
-        const delayMinutes = Math.floor(Math.random() * 21) + 20; // 20 a 40 min
-        const delayMs = delayMinutes * 60 * 1000;
+    if (time >= current) return;
 
-        persistence.log(
-          "WATCHDOG",
-          `Slot ${index + 1} (${time}) overdue – firing in ${delayMinutes}min`,
-        );
+    const msg = state.todayQueue[index];
 
-        setTimeout(() => {
-          const currentMsg = state.todayQueue[index];
-          if (currentMsg && currentMsg.status === "waiting") {
-            persistence.log(
-              "WATCHDOG",
-              `Slot ${index + 1} (${time}) firing now after ${delayMinutes}min delay`,
-            );
-            queueDispatch(index);
-          }
-        }, delayMs);
+    if (!msg || msg.status !== "waiting") return;
+
+    if (state.watchdogScheduled.has(index)) return;
+
+    if (index > 0) {
+      const prev = state.todayQueue[index - 1];
+      if (prev && prev.status !== "sent" && prev.status !== "error") {
+        return;
       }
+    }
+
+    state.watchdogScheduled.add(index);
+
+    const isFirstMissed = state.watchdogScheduled.size === 1;
+
+    if (isFirstMissed) {
+      persistence.log(
+        "WATCHDOG",
+        `Slot ${index + 1} (${time}) overdue – firing immediately (first miss of the day)`,
+      );
+      queueDispatch(index);
+    } else {
+      const delayMinutes = Math.floor(Math.random() * 11) + 20;
+      const delayMs = delayMinutes * 60 * 1000;
+
+      persistence.log(
+        "WATCHDOG",
+        `Slot ${index + 1} (${time}) overdue – firing in ${delayMinutes}min`,
+      );
+
+      setTimeout(() => {
+        const currentMsg = state.todayQueue[index];
+        if (currentMsg && currentMsg.status === "waiting") {
+          persistence.log(
+            "WATCHDOG",
+            `Slot ${index + 1} (${time}) firing now after ${delayMinutes}min delay`,
+          );
+          queueDispatch(index);
+        }
+      }, delayMs);
     }
   });
 }
