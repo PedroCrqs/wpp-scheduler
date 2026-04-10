@@ -156,9 +156,9 @@ function initResetScheduler() {
   if (state.resetCronInitialized) return;
 
   const task = cron.schedule(
-    "0 3 * * *",
+    "0 20 * * *",
     async () => {
-      await persistence.log("RESET", "Daily reset triggered by cron (03:00)");
+      await persistence.log("RESET", "Daily reset triggered by cron (20:00)");
       await dailyReset();
     },
     { timezone: "America/Sao_Paulo" },
