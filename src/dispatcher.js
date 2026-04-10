@@ -2,6 +2,7 @@ const state = require("./state");
 const { GENERAL_GROUPS } = require("./config");
 const { sleep, shuffle, microVary } = require("./helpers");
 const persistence = require("./persistence");
+const { dailyReset, initResetScheduler } = require("./scheduler");
 
 function queueDispatch(index) {
   state.pendingDispatches.push(index);
@@ -9,10 +10,8 @@ function queueDispatch(index) {
 }
 
 async function processDispatchQueue() {
-  // Se já há um disparo em andamento, aguarda — será retomado ao final do atual
   if (state.dispatchRunning) return;
 
-  // Loop para drenar toda a fila sem recursão (evita race condition)
   while (state.pendingDispatches.length > 0) {
     state.dispatchRunning = true;
     const index = state.pendingDispatches.shift();
@@ -45,7 +44,6 @@ async function executeDispatch(index) {
 
   const message = state.todayQueue[index];
 
-  // Proteção dupla contra disparo duplicado
   if (message.status === "sent") {
     await persistence.log("WARN", `Slot ${index + 1}: already sent, skipping`);
     return;
@@ -58,14 +56,12 @@ async function executeDispatch(index) {
     return;
   }
 
-  // Marca como "sending" imediatamente para bloquear chamadas simultâneas
   state.todayQueue[index].status = "sending";
   await persistence.saveQueue();
 
   let successes = 0;
   let failures = 0;
 
-  // ANTI-BAN: embaralha a ordem de envio dos grupos
   const targetGroups = shuffle(message.targetGroups || GENERAL_GROUPS);
 
   await persistence.log(
@@ -73,14 +69,12 @@ async function executeDispatch(index) {
     `Slot ${index + 1} | neighborhood: ${message.neighborhood || "—"} | class: ${message.class || "GENERAL"} | ${targetGroups.length} groups`,
   );
 
-  // state.client é definido em src/client.js após a criação do Client
   const client = state.client;
 
   for (let i = 0; i < targetGroups.length; i++) {
     const groupId = targetGroups[i];
     try {
       const chat = await client.getChatById(groupId);
-      // ANTI-BAN: micro variação no texto para evitar detecção de duplicata pela META
       await chat.sendMessage(microVary(message.body));
       await persistence.log(
         "SENT",
@@ -88,12 +82,10 @@ async function executeDispatch(index) {
       );
       successes++;
 
-      // ANTI-BAN: pausa longa a cada 5 envios
       if ((i + 1) % 5 === 0) {
-        await sleep(15000 + Math.random() * 20000); // 15–35s
+        await sleep(15000 + Math.random() * 20000);
       } else {
-        // ANTI-BAN: delay variável entre envios individuais
-        await sleep(4000 + Math.random() * 8000); // 4–12s
+        await sleep(4000 + Math.random() * 8000);
       }
     } catch (err) {
       await persistence.log(
@@ -116,7 +108,14 @@ async function executeDispatch(index) {
     `Slot ${index + 1} done — ${successes} ok, ${failures} failed`,
   );
 
-  // Notifica via mensagem para si mesmo
+  if (!state.resetCronInitialized) {
+    initResetScheduler();
+  }
+
+  if (state.dispatchesDone === 10) {
+    await dailyReset(false);
+  }
+
   try {
     const myId = client.info.wid._serialized;
     await client.sendMessage(

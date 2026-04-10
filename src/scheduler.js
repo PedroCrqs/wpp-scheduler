@@ -14,17 +14,6 @@ function nowSP() {
     .trim();
 }
 
-function msUntilSP(hh, mm) {
-  const now = new Date();
-  const sp = new Date(
-    now.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }),
-  );
-  sp.setHours(hh, mm, 0, 0);
-  let diff = sp - now;
-  if (diff <= 0) diff += 24 * 60 * 60 * 1000;
-  return diff;
-}
-
 function generateSchedule() {
   const base = [
     { hour: 9, minute: 0 },
@@ -39,7 +28,7 @@ function generateSchedule() {
     { hour: 18, minute: 0 },
   ];
   return base.map(({ hour, minute }) => {
-    const jitter = Math.floor(Math.random() * 46); // 0–45 min
+    const jitter = Math.floor(Math.random() * 46);
     const newMinute = minute + jitter;
     return `${String(hour).padStart(2, "0")}:${String(newMinute).padStart(2, "0")}`;
   });
@@ -79,8 +68,14 @@ async function scheduleDispatches() {
   await persistence.log("CRON", `${state.SCHEDULE.length} slots scheduled ✓`);
 }
 
-async function dailyReset() {
-  await persistence.log("RESET", "Daily reset triggered (19:00 SP)");
+async function dailyReset(reschedule = true) {
+  await persistence.log("RESET", "Daily reset triggered");
+
+  if (state.resetCronTask) {
+    state.resetCronTask.destroy();
+    state.resetCronTask = null;
+    state.resetCronInitialized = false;
+  }
 
   state.todayQueue = [];
   state.dispatchesDone = 0;
@@ -97,53 +92,9 @@ async function dailyReset() {
   );
   await scheduleDispatches();
 
-  scheduleNextReset();
-}
-
-function scheduleNextReset() {
-  const RESET_HOUR = 19;
-  const RESET_MIN = 0;
-
-  const delay = msUntilSP(RESET_HOUR, RESET_MIN);
-
-  if (state.resetTimer) {
-    clearTimeout(state.resetTimer);
-    state.resetTimer = null;
+  if (reschedule) {
+    initResetScheduler();
   }
-
-  persistence.log(
-    "RESET",
-    `Next daily reset scheduled in ${Math.round(delay / 60000)} min`,
-  );
-
-  state.resetTimer = setTimeout(async () => {
-    state.resetTimer = null;
-
-    const current = nowSP();
-    if (current < "19:00") {
-      persistence.log(
-        "RESET",
-        `setTimeout fired early (now ${current}) — retrying in 60s`,
-      );
-      state.resetTimer = setTimeout(scheduleNextReset, 60_000);
-      return;
-    }
-
-    if (state.resetFiredAt === current.slice(0, 5)) {
-      persistence.log("RESET", `Reset already fired at ${current} — skipping`);
-      scheduleNextReset();
-      return;
-    }
-    state.resetFiredAt = current.slice(0, 5); // "19:00"
-
-    await dailyReset();
-  }, delay);
-}
-
-function initResetScheduler() {
-  if (state.resetSchedulerInitialized) return;
-  state.resetSchedulerInitialized = true;
-  scheduleNextReset();
 }
 
 function checkMissedDispatches() {
@@ -199,6 +150,22 @@ function checkMissedDispatches() {
       }, delayMs);
     }
   });
+}
+
+function initResetScheduler() {
+  if (state.resetCronInitialized) return;
+
+  const task = cron.schedule(
+    "0 3 * * *",
+    async () => {
+      await persistence.log("RESET", "Daily reset triggered by cron (03:00)");
+      await dailyReset();
+    },
+    { timezone: "America/Sao_Paulo" },
+  );
+
+  state.resetCronTask = task;
+  state.resetCronInitialized = true;
 }
 
 module.exports = {

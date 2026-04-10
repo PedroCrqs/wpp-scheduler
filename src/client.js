@@ -73,16 +73,16 @@ client.on("ready", async () => {
     "BOT",
     `Queue: ${state.todayQueue.length} message(s) | ${state.dispatchesDone} already dispatched`,
   );
+
   await scheduleDispatches();
 
-  initResetScheduler();
-
   if (!state.resetCronInitialized) {
-    state.resetCronInitialized = true;
-    cron.schedule("* * * * *", checkMissedDispatches, {
-      timezone: "America/Sao_Paulo",
-    });
+    initResetScheduler();
   }
+
+  cron.schedule("* * * * *", checkMissedDispatches, {
+    timezone: "America/Sao_Paulo",
+  });
 
   const current = new Date()
     .toLocaleString("en-US", {
