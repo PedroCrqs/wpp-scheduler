@@ -8,6 +8,45 @@ Baseado em [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [3.3.2] - 2026-04-10
+
+### Fixed
+
+- **`state.scheduleDate` not set on boot when generating a new schedule** _(client.js)_
+  - When no saved schedule existed on disk, the `else` branch generated a new schedule but never assigned `state.scheduleDate`. This left the field as `null`, causing the watchdog date-gate to always fail (`null !== todaySP`) and allowing all slots to fire immediately on the next queue load.
+  - Fix: `state.scheduleDate` is now set to today's date in `America/Sao_Paulo` in the `else` branch, immediately after `generateSchedule()`.
+
+- **`state.scheduleDate` not updated after `dailyReset`** _(scheduler.js)_
+  - `dailyReset` generated a new schedule but did not update `state.scheduleDate`, leaving it stale from the previous day. On the next watchdog tick, the date-gate compared the old date against today and blocked all recovery — or, in edge cases, allowed unintended dispatches.
+  - Fix: `state.scheduleDate` is now assigned the new day's date immediately after `generateSchedule()` inside `dailyReset`.
+
+- **Watchdog date-gate did not guard against `null` schedule date** _(scheduler.js)_
+  - The condition `state.scheduleDate !== todaySP` evaluated to `true` when `scheduleDate` was `null`, but the log message implied it was a date mismatch rather than an uninitialized state, making the root cause harder to diagnose.
+  - Fix: guard updated to `!state.scheduleDate || state.scheduleDate !== todaySP`, making the null case explicit.
+
+---
+
+### Corrigido
+
+- **`state.scheduleDate` não era definido no boot ao gerar um novo schedule** _(client.js)_
+  - Quando nenhum schedule salvo existia em disco, o bloco `else` gerava um novo schedule mas nunca atribuía `state.scheduleDate`. O campo ficava como `null`, fazendo o gate de data do watchdog sempre falhar (`null !== todaySP`) e permitindo que todos os slots disparassem imediatamente na próxima carga de fila.
+  - Correção: `state.scheduleDate` agora recebe a data de hoje em `America/Sao_Paulo` no bloco `else`, imediatamente após `generateSchedule()`.
+
+- **`state.scheduleDate` não era atualizado após `dailyReset`** _(scheduler.js)_
+  - `dailyReset` gerava um novo schedule mas não atualizava `state.scheduleDate`, deixando o valor obsoleto do dia anterior. No próximo tick do watchdog, o gate comparava a data antiga com a de hoje e bloqueava toda recuperação — ou, em casos extremos, permitia disparos indevidos.
+  - Correção: `state.scheduleDate` agora recebe a data do novo dia imediatamente após `generateSchedule()` dentro de `dailyReset`.
+
+- **Gate de data do watchdog não protegia contra schedule date `null`** _(scheduler.js)_
+  - A condição `state.scheduleDate !== todaySP` era `true` quando `scheduleDate` era `null`, mas a mensagem de log indicava divergência de data em vez de estado não inicializado, dificultando o diagnóstico da causa raiz.
+  - Correção: guard atualizado para `!state.scheduleDate || state.scheduleDate !== todaySP`, tornando o caso nulo explícito.
+
+---
+
+> **Commit:** `fix(scheduler): set scheduleDate on boot and after dailyReset, guard null in watchdog date-gate`  
+> **Tag:** `v3.3.2`
+
+---
+
 ## [3.3.1] - 2026-04-10
 
 ### Fixed
