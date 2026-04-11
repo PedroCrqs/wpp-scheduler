@@ -97,21 +97,40 @@ async function dailyReset(reschedule = true) {
   }
 }
 
-function checkMissedDispatches() {
+async function checkMissedDispatches() {
   const { queueDispatch } = require("./dispatcher");
 
+  const todaySP = new Date().toLocaleDateString("en-CA", {
+    timeZone: "America/Sao_Paulo",
+  });
+
   const current = nowSP();
+
+  // 🔒 Gate por data (evita replay de dias antigos ou futuros)
+  if (state.scheduleDate !== todaySP) {
+    await persistence.log(
+      "WATCHDOG",
+      "Schedule date mismatch — skipping missed slot recovery",
+    );
+    return;
+  }
+
+  // 🔒 Evita execução fora da janela operacional
   if (current < "09:00" || current >= "19:00") return;
 
   state.SCHEDULE.forEach((time, index) => {
+    // ⛔ Só olha slots já passados
     if (time >= current) return;
 
     const msg = state.todayQueue[index];
 
+    // ⛔ Nada pra enviar ou já processado
     if (!msg || msg.status !== "waiting") return;
 
+    // ⛔ Já foi agendado pelo watchdog
     if (state.watchdogScheduled.has(index)) return;
 
+    // 🔗 Garante ordem: só dispara se o anterior terminou
     if (index > 0) {
       const prev = state.todayQueue[index - 1];
       if (prev && prev.status !== "sent" && prev.status !== "error") {
@@ -124,26 +143,30 @@ function checkMissedDispatches() {
     const isFirstMissed = state.watchdogScheduled.size === 1;
 
     if (isFirstMissed) {
+      // 🚀 Primeiro atraso do dia → execução imediata
       persistence.log(
         "WATCHDOG",
-        `Slot ${index + 1} (${time}) overdue – firing immediately (first miss of the day)`,
+        `Slot ${index + 1} (${time}) overdue — firing immediately`,
       );
       queueDispatch(index);
     } else {
+      // 🧠 Delay inteligente (20–30min com jitter)
       const delayMinutes = Math.floor(Math.random() * 11) + 20;
       const delayMs = delayMinutes * 60 * 1000;
 
       persistence.log(
         "WATCHDOG",
-        `Slot ${index + 1} (${time}) overdue – firing in ${delayMinutes}min`,
+        `Slot ${index + 1} (${time}) overdue — scheduling in ${delayMinutes}min`,
       );
 
       setTimeout(() => {
         const currentMsg = state.todayQueue[index];
+
+        // 🔁 Revalidação antes de disparar
         if (currentMsg && currentMsg.status === "waiting") {
           persistence.log(
             "WATCHDOG",
-            `Slot ${index + 1} (${time}) firing now after ${delayMinutes}min delay`,
+            `Slot ${index + 1} (${time}) firing after delay`,
           );
           queueDispatch(index);
         }

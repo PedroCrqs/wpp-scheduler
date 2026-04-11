@@ -55,7 +55,8 @@ client.on("ready", async () => {
 
   const savedSchedule = persistence.loadSchedule();
   if (savedSchedule) {
-    state.SCHEDULE = savedSchedule;
+    state.SCHEDULE = savedSchedule.slots;
+    state.scheduleDate = savedSchedule.date;
     await persistence.log(
       "BOT",
       `Schedule loaded from disk: ${state.SCHEDULE.join(", ")}`,

@@ -11,6 +11,7 @@ const state = {
   resetCronTask: null,
   resetCronInitialized: false,
   watchdogScheduled: new Set(),
+  scheduleDate: null,
 };
 
 module.exports = state;

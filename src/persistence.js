@@ -55,16 +55,24 @@ function loadQueue() {
 }
 
 async function saveSchedule() {
+  const todaySP = new Date().toLocaleDateString("en-CA", {
+    timeZone: "America/Sao_Paulo",
+  });
   await fsPromises.writeFile(
     SCHEDULE_PATH,
-    JSON.stringify(state.SCHEDULE, null, 2)
+    JSON.stringify({ date: todaySP, slots: state.SCHEDULE }, null, 2),
   );
 }
 
 function loadSchedule() {
   try {
     const data = JSON.parse(fs.readFileSync(SCHEDULE_PATH, "utf8"));
-    if (Array.isArray(data) && data.length === 10) return data;
+    const todaySP = new Date().toLocaleDateString("en-CA", {
+      timeZone: "America/Sao_Paulo",
+    });
+    if (Array.isArray(data) && data.length === 10)
+      return { slots: data, date: todaySP };
+    if (data.slots && data.date) return data;
   } catch {}
   return null;
 }
