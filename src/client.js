@@ -63,6 +63,9 @@ client.on("ready", async () => {
     );
   } else {
     state.SCHEDULE = generateSchedule();
+    state.scheduleDate = new Date().toLocaleDateString("en-CA", {
+      timeZone: "America/Sao_Paulo",
+    });
     persistence.saveSchedule();
     await persistence.log(
       "BOT",
