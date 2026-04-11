@@ -96,6 +96,11 @@ async function dailyReset(reschedule = true) {
   );
   await scheduleDispatches();
 
+  try {
+    const myId = client.info.wid._serialized;
+    await client.sendMessage(myId, `🗑️ *Daily Reset Triggered!*\n\n`);
+  } catch {}
+
   if (reschedule) {
     initResetScheduler();
   }
