@@ -98,18 +98,20 @@ client.on("ready", async () => {
     .replace(",", "")
     .trim();
 
-  state.SCHEDULE.forEach((time, index) => {
-    if (time < current) {
-      const msg = state.todayQueue[index];
-      if (msg && msg.status === "waiting") {
-        persistence.log(
-          "BOT",
-          `Slot ${index + 1} (${time}) missed — firing now (bot was offline)`,
-        );
-        queueDispatch(index);
+  if (current >= "09:00" && current < "20:00") {
+    state.SCHEDULE.forEach((time, index) => {
+      if (time < current) {
+        const msg = state.todayQueue[index];
+        if (msg && msg.status === "waiting") {
+          persistence.log(
+            "BOT",
+            `Slot ${index + 1} (${time}) missed — firing now (bot was offline)`,
+          );
+          queueDispatch(index);
+        }
       }
-    }
-  });
+    });
+  }
 });
 
 client.on("auth_failure", (msg) => {
