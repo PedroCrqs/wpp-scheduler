@@ -8,6 +8,41 @@ Baseado em [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [3.3.1] - 2026-04-10
+
+### Fixed
+
+- **Missed slot recovery no longer fires future-day queue on bot restart** _(client.js, persistence.js, state.js)_
+  - After a full 10-dispatch day, the operator may load the next day's queue before midnight. On restart, the bot was treating all schedule slots as overdue and dispatching them immediately.
+  - Root cause: the schedule date was not persisted — on boot the bot had no way to know the schedule was generated for a future date.
+  - Fix: `saveSchedule` now persists `{ date, slots }` instead of a bare array. `loadSchedule` returns both fields. `state.scheduleDate` holds the target date.
+  - On boot, missed slot recovery is skipped entirely if `state.scheduleDate` does not match today's date in `America/Sao_Paulo`.
+
+### Added
+
+- `state.scheduleDate` — stores the date (`YYYY-MM-DD`) for which the current schedule was generated. _(state.js)_
+
+---
+
+### Corrigido
+
+- **Recovery de slots perdidos não mais dispara fila do dia seguinte ao reiniciar o bot** _(client.js, persistence.js, state.js)_
+  - Após completar os 10 disparos do dia, o operador pode carregar a fila do dia seguinte antes da meia-noite. Ao reiniciar, o bot tratava todos os slots do schedule como atrasados e os disparava imediatamente.
+  - Causa raiz: a data do schedule não era persistida — no boot o bot não tinha como saber que o schedule foi gerado para uma data futura.
+  - Correção: `saveSchedule` agora persiste `{ date, slots }` em vez de um array puro. `loadSchedule` retorna ambos os campos. `state.scheduleDate` armazena a data alvo.
+  - No boot, o recovery de slots perdidos é ignorado completamente se `state.scheduleDate` não corresponder à data de hoje em `America/Sao_Paulo`.
+
+### Adicionado
+
+- `state.scheduleDate` — armazena a data (`YYYY-MM-DD`) para a qual o schedule atual foi gerado. _(state.js)_
+
+---
+
+> **Commit:** `fix(scheduler): persist schedule date to prevent future-day queue from firing on restart`  
+> **Tag:** `v3.3.1`
+
+---
+
 ## [3.3.0] - 2026-04-10
 
 ### Changed
@@ -16,17 +51,16 @@ Baseado em [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - Previous approach scheduled reset via cron triggered after 19:00 (end of dispatch window), which depended on the counter reaching 10 to cancel it or let it fire.
   - New approach: reset is always anchored at 03:00 AM, outside any operational window, eliminating the risk of an accidental mid-day trigger.
 
-- **`dailyReset` accepts a `reschedule` parameter to control post-reset cron behavior** _(scheduler.js)_
-  - `dailyReset(true)` — default, used by the 03:00 cron: destroys the current task, clears state, and re-arms `initResetScheduler()` for the next day.
-  - `dailyReset(false)` — used after the 10th dispatch: destroys the cron and does not re-arm it, leaving the overnight queue loaded by the operator intact until the next day's dispatches begin.
+- **`dailyReset` is now the single source of truth for the reset cron lifecycle** _(scheduler.js)_
+  - `dailyReset` now destroys the active `resetCronTask`, clears `resetCronInitialized`, runs all state cleanup, and calls `initResetScheduler()` at the end to re-arm for the next day.
+  - Whether triggered by the 10th dispatch or by the 03:00 cron itself, the behavior is identical and fully self-contained.
 
-- **`dispatcher.js` re-coupled minimally to reset cron as a safety net** _(dispatcher.js)_
-  - After each dispatch, if `resetCronInitialized` is false (e.g. bot restarted mid-day after completing 10 dispatches the prior day), `initResetScheduler()` is called to re-arm the cron.
-  - On the 10th dispatch, `dailyReset(false)` is called to clear state without re-arming the 03:00 cron.
+- **`dispatcher.js` decoupled from reset cron lifecycle** _(dispatcher.js)_
+  - Removed `initResetScheduler` import and all cron management logic from `executeDispatch`.
+  - The dispatcher now only calls `dailyReset()` when `dispatchesDone === 10` and delegates all lifecycle responsibility to it.
 
-- **`client.js` — watchdog cron guard restored as reconnection safeguard** _(client.js)_
-  - `initResetScheduler()` in the `ready` event is now guarded by `if (!state.resetCronInitialized)` to prevent double-scheduling on WhatsApp reconnections during the same process lifetime.
-  - Watchdog cron (`checkMissedDispatches`) is registered unconditionally on `ready`.
+- **Removed redundant watchdog cron guard in `client.js`** _(client.js)_
+  - The `if (!state.resetCronInitialized)` guard around the `checkMissedDispatches` cron was based on the old reset flag semantics and had no effect. The watchdog cron is now registered unconditionally on `ready`.
 
 ### Removed
 
@@ -40,17 +74,16 @@ Baseado em [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - A abordagem anterior agendava o reset via cron disparado após as 19:00 (fim da janela de disparos), dependendo do contador chegar a 10 para cancelá-lo ou deixá-lo executar.
   - Nova abordagem: reset sempre fixado às 03:00, fora de qualquer janela operacional, eliminando risco de disparo acidental durante o dia.
 
-- **`dailyReset` recebe parâmetro `reschedule` para controlar o comportamento pós-reset** _(scheduler.js)_
-  - `dailyReset(true)` — padrão, usado pelo cron das 03:00: destrói o task atual, limpa o estado e rearma `initResetScheduler()` para o dia seguinte.
-  - `dailyReset(false)` — usado após o 10º disparo: destrói o cron e não o rearma, preservando a fila carregada pelo operador durante a madrugada até os disparos do dia seguinte.
+- **`dailyReset` passa a ser a única fonte de verdade do ciclo de vida do cron de reset** _(scheduler.js)_
+  - `dailyReset` agora destrói o `resetCronTask` ativo, limpa `resetCronInitialized`, executa toda a limpeza de estado e chama `initResetScheduler()` ao final para rearmar o cron para o dia seguinte.
+  - Seja acionado pelo 10º disparo ou pelo próprio cron das 03:00, o comportamento é idêntico e completamente autocontido.
 
-- **`dispatcher.js` reconectado minimamente ao ciclo do cron como rede de segurança** _(dispatcher.js)_
-  - Após cada disparo, se `resetCronInitialized` for false (ex: bot reiniciado no meio do dia após já ter completado 10 disparos no dia anterior), `initResetScheduler()` é chamado para rearmar o cron.
-  - No 10º disparo, `dailyReset(false)` é chamado para limpar o estado sem rearmar o cron das 03:00.
+- **`dispatcher.js` desacoplado do ciclo de vida do cron de reset** _(dispatcher.js)_
+  - Removidos import de `initResetScheduler` e toda a lógica de gerenciamento de cron de `executeDispatch`.
+  - O dispatcher agora apenas chama `dailyReset()` quando `dispatchesDone === 10` e delega toda a responsabilidade de ciclo de vida para ela.
 
-- **`client.js` — guard do cron restaurado como proteção contra reconexão** _(client.js)_
-  - `initResetScheduler()` no evento `ready` agora é protegido por `if (!state.resetCronInitialized)` para evitar duplo agendamento em reconexões do WhatsApp durante o mesmo processo.
-  - O cron watchdog (`checkMissedDispatches`) é registrado incondicionalmente no `ready`.
+- **Removido guard redundante do cron watchdog em `client.js`** _(client.js)_
+  - O guard `if (!state.resetCronInitialized)` em volta do cron `checkMissedDispatches` estava baseado na semântica antiga da flag de reset e não tinha efeito. O cron watchdog agora é registrado incondicionalmente no evento `ready`.
 
 ### Removido
 
@@ -58,7 +91,7 @@ Baseado em [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-> **Commit:** `refactor(reset): anchor reset to 03:00 cron with reschedule flag, add mid-day re-arm safety net`  
+> **Commit:** `refactor(reset): anchor daily reset to 03:00 cron, make dailyReset sole lifecycle owner`  
 > **Tag:** `v3.3.0`
 
 ---
