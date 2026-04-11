@@ -55,12 +55,13 @@ function loadQueue() {
 }
 
 async function saveSchedule() {
-  const todaySP = new Date().toLocaleDateString("en-CA", {
-    timeZone: "America/Sao_Paulo",
-  });
   await fsPromises.writeFile(
     SCHEDULE_PATH,
-    JSON.stringify({ date: todaySP, slots: state.SCHEDULE }, null, 2),
+    JSON.stringify(
+      { date: state.scheduleDate, slots: state.SCHEDULE },
+      null,
+      2,
+    ),
   );
 }
 

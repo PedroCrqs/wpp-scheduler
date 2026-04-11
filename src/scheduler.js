@@ -84,7 +84,8 @@ async function dailyReset(reschedule = true) {
   state.dispatchRunning = false;
   state.SCHEDULE = generateSchedule();
   state.watchdogScheduled = new Set();
-  state.scheduleDate = new Date().toLocaleDateString("en-CA", {
+  const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  state.scheduleDate = tomorrow.toLocaleDateString("en-CA", {
     timeZone: "America/Sao_Paulo",
   });
   await persistence.saveSchedule();
@@ -110,10 +111,6 @@ async function checkMissedDispatches() {
   const current = nowSP();
 
   if (!state.scheduleDate || state.scheduleDate !== todaySP) {
-    await persistence.log(
-      "WATCHDOG",
-      "Schedule date mismatch — skipping missed slot recovery",
-    );
     return;
   }
   if (current < "09:00" || current >= "20:00") return;

@@ -8,7 +8,42 @@ Baseado em [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [3.3.3] - 2026-04-10
+## [3.3.4] - 2026-04-11
+
+### Fixed
+
+- **Watchdog blocked all day when queue is loaded the day before** _(scheduler.js, persistence.js, commands.js)_
+  - When the operator loads the next day's queue before the reset (either via the 20:00 cron or after the 10th dispatch), `dailyReset` was setting `state.scheduleDate` to **today** (the day the reset ran). On the following day, `checkMissedDispatches` compared `state.scheduleDate` (yesterday) against `todaySP` (today) — they never matched, so the watchdog was silently blocked for the entire operational window, requiring manual `!fire` for every overdue slot.
+  - Root cause: `dailyReset` generates a schedule intended for the **next** operational day, but was stamping it with the current date. Since the last slot runs at most at 18:45 and the reset fires immediately after, it is impossible to load a same-day queue after `dailyReset` — the target date is always tomorrow.
+  - Fix: `dailyReset` now always computes tomorrow's date in `America/Sao_Paulo` and assigns it to `state.scheduleDate`, unconditionally. This applies to both triggers — the 20:00 cron and the post-10th-dispatch reset — since both call the same `dailyReset` function.
+  - Fix: `saveSchedule` in `persistence.js` now writes `state.scheduleDate` directly instead of recomputing `new Date()`, ensuring the correct future date is persisted to disk and survives bot restarts.
+  - Fix: `handleClear` in `commands.js` now explicitly sets `state.scheduleDate` to today before calling `saveSchedule`, since a manual clear always happens within the current operational day.
+
+- **Watchdog date-gate was spamming the log on every tick** _(scheduler.js)_
+  - The `checkMissedDispatches` guard logged a `WATCHDOG` entry every minute when the schedule date didn't match today, flooding the log file with hundreds of identical entries per day.
+  - Fix: the log call was removed from the mismatch guard. The condition now returns silently — it is expected behavior outside the operational window.
+
+---
+
+### Corrigido
+
+- **Watchdog bloqueado o dia todo quando a fila é carregada no dia anterior** _(scheduler.js, persistence.js, commands.js)_
+  - Quando o operador carrega a fila do dia seguinte antes do reset (seja pelo cron das 20:00 ou após o 10º disparo), o `dailyReset` gravava `state.scheduleDate` com a data de **hoje** (dia em que o reset ocorreu). No dia seguinte, `checkMissedDispatches` comparava `state.scheduleDate` (ontem) com `todaySP` (hoje) — nunca batiam, e o watchdog ficava bloqueado durante toda a janela operacional, exigindo `!fire` manual para cada slot atrasado.
+  - Causa raiz: `dailyReset` gera um schedule destinado ao **próximo** dia operacional, mas o marcava com a data corrente. Como o último slot roda no máximo às 18:45 e o reset dispara imediatamente após, é impossível carregar uma fila para o mesmo dia após o `dailyReset` — a data alvo é sempre amanhã.
+  - Correção: `dailyReset` agora sempre calcula a data de amanhã em `America/Sao_Paulo` e a atribui a `state.scheduleDate`, incondicionalmente. Isso se aplica aos dois gatilhos — cron das 20:00 e reset pós-10º-disparo — pois ambos chamam a mesma função `dailyReset`.
+  - Correção: `saveSchedule` em `persistence.js` agora grava `state.scheduleDate` diretamente em vez de recalcular `new Date()`, garantindo que a data futura correta seja persistida em disco e sobreviva a restarts do bot.
+  - Correção: `handleClear` em `commands.js` agora define explicitamente `state.scheduleDate` como hoje antes de chamar `saveSchedule`, pois um clear manual sempre ocorre dentro do dia operacional vigente.
+
+- **Gate de data do watchdog spammava o log a cada tick** _(scheduler.js)_
+  - A guard de `checkMissedDispatches` logava uma entrada `WATCHDOG` a cada minuto quando a data do schedule não batia com hoje, inundando o arquivo de log com centenas de entradas idênticas por dia.
+  - Correção: a chamada de log foi removida da guard de mismatch. A condição agora retorna silenciosamente — é comportamento esperado fora da janela operacional.
+
+---
+
+> **Commit:** `fix(scheduler): stamp scheduleDate as tomorrow on reset, silence watchdog mismatch log`  
+> **Tag:** `v3.3.4`
+
+---
 
 ### Fixed
 
@@ -29,6 +64,30 @@ Baseado em [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ---
 
 > **Commit:** `fix(client): guard boot-time missed slot recovery to operational window (09:00–19:00)`  
+> **Tag:** `v3.3.3`
+
+---
+
+## [3.3.3] - 2026-04-10
+
+### Fixed
+
+- **Boot-time missed slot recovery fires outside operational window** _(client.js)_
+  - On `client ready`, the bot iterated over past schedule slots and immediately dispatched any `waiting` message. This logic had no time-window guard, so restarting the bot between 19:00 and 23:59 with a next-day queue already loaded caused all slots to fire at once.
+  - Root cause: the watchdog (`checkMissedDispatches`) correctly guards with `current >= "20:00"`, but the equivalent boot-time recovery block in `client.js` had no such guard.
+  - Fix: the boot-time recovery block is now wrapped in `if (current >= "09:00" && current < "20:00")`, making it consistent with the watchdog's operational window.
+
+---
+
+### Corrigido
+
+- **Recovery de slots perdidos no boot dispara fora da janela operacional** _(client.js)_
+  - No evento `client ready`, o bot iterava sobre slots passados do schedule e despachava imediatamente qualquer mensagem `waiting`. Esse bloco não tinha guard de janela de tempo, então reiniciar o bot entre 19:00 e 23:59 com a fila do dia seguinte já carregada disparava todos os slots de uma vez.
+  - Correção: o bloco de recovery no boot agora é envolvido em `if (current >= "09:00" && current < "20:00")`, tornando-o consistente com a janela operacional do watchdog.
+
+---
+
+> **Commit:** `fix(client): guard boot-time missed slot recovery to operational window (09:00–20:00)`  
 > **Tag:** `v3.3.3`
 
 ---

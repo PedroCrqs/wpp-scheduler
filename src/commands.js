@@ -26,6 +26,9 @@ async function handleClear(msg) {
   state.dispatchesDone = 0;
   state.processedMessages.clear();
   state.SCHEDULE = generateSchedule();
+  state.scheduleDate = new Date().toLocaleDateString("en-CA", {
+    timeZone: "America/Sao_Paulo",
+  });
   persistence.saveSchedule();
   await persistence.saveQueue();
   await scheduleDispatches();
