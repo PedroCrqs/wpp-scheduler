@@ -23,6 +23,11 @@ Baseado em [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - The `checkMissedDispatches` guard logged a `WATCHDOG` entry every minute when the schedule date didn't match today, flooding the log file with hundreds of identical entries per day.
   - Fix: the log call was removed from the mismatch guard. The condition now returns silently — it is expected behavior outside the operational window.
 
+### Added
+
+- **Daily reset confirmation message** _(scheduler.js)_
+  - After `dailyReset` completes, the bot now sends a WhatsApp notification to its own ID confirming the reset was triggered. Useful to distinguish reset-triggered restarts from silent ones in the operational flow.
+
 ---
 
 ### Corrigido
@@ -38,12 +43,19 @@ Baseado em [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - A guard de `checkMissedDispatches` logava uma entrada `WATCHDOG` a cada minuto quando a data do schedule não batia com hoje, inundando o arquivo de log com centenas de entradas idênticas por dia.
   - Correção: a chamada de log foi removida da guard de mismatch. A condição agora retorna silenciosamente — é comportamento esperado fora da janela operacional.
 
+### Adicionado
+
+- **Mensagem de confirmação do reset diário** _(scheduler.js)_
+  - Após a conclusão do `dailyReset`, o bot agora envia uma notificação no WhatsApp para o próprio ID confirmando que o reset foi disparado. Útil para distinguir resets de restarts silenciosos no fluxo operacional.
+
 ---
 
-> **Commit:** `fix(scheduler): stamp scheduleDate as tomorrow on reset, silence watchdog mismatch log`  
+> **Commit:** `fix(scheduler): stamp scheduleDate as tomorrow on reset, silence watchdog log, notify on reset`  
 > **Tag:** `v3.3.4`
 
 ---
+
+## [3.3.3] - 2026-04-10
 
 ### Fixed
 
@@ -64,30 +76,6 @@ Baseado em [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ---
 
 > **Commit:** `fix(client): guard boot-time missed slot recovery to operational window (09:00–19:00)`  
-> **Tag:** `v3.3.3`
-
----
-
-## [3.3.3] - 2026-04-10
-
-### Fixed
-
-- **Boot-time missed slot recovery fires outside operational window** _(client.js)_
-  - On `client ready`, the bot iterated over past schedule slots and immediately dispatched any `waiting` message. This logic had no time-window guard, so restarting the bot between 19:00 and 23:59 with a next-day queue already loaded caused all slots to fire at once.
-  - Root cause: the watchdog (`checkMissedDispatches`) correctly guards with `current >= "20:00"`, but the equivalent boot-time recovery block in `client.js` had no such guard.
-  - Fix: the boot-time recovery block is now wrapped in `if (current >= "09:00" && current < "20:00")`, making it consistent with the watchdog's operational window.
-
----
-
-### Corrigido
-
-- **Recovery de slots perdidos no boot dispara fora da janela operacional** _(client.js)_
-  - No evento `client ready`, o bot iterava sobre slots passados do schedule e despachava imediatamente qualquer mensagem `waiting`. Esse bloco não tinha guard de janela de tempo, então reiniciar o bot entre 19:00 e 23:59 com a fila do dia seguinte já carregada disparava todos os slots de uma vez.
-  - Correção: o bloco de recovery no boot agora é envolvido em `if (current >= "09:00" && current < "20:00")`, tornando-o consistente com a janela operacional do watchdog.
-
----
-
-> **Commit:** `fix(client): guard boot-time missed slot recovery to operational window (09:00–20:00)`  
 > **Tag:** `v3.3.3`
 
 ---
