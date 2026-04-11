@@ -13,18 +13,18 @@ Baseado em [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Fixed
 
 - **Boot-time missed slot recovery fires outside operational window** _(client.js)_
-  - On `client ready`, the bot iterated over past schedule slots and immediately dispatched any `waiting` message. This logic had no time-window guard, so restarting the bot between 19:00 and 23:59 with a next-day queue already loaded caused all slots to fire at once.
+  - On `client ready`, the bot iterated over past schedule slots and immediately dispatched any `waiting` message. This logic had no time-window guard, so restarting the bot between 20:00 and 23:59 with a next-day queue already loaded caused all slots to fire at once.
   - Root cause: the watchdog (`checkMissedDispatches`) correctly guards with `current >= "19:00"`, but the equivalent boot-time recovery block in `client.js` had no such guard.
-  - Fix: the boot-time recovery block is now wrapped in `if (current >= "09:00" && current < "19:00")`, making it consistent with the watchdog's operational window.
+  - Fix: the boot-time recovery block is now wrapped in `if (current >= "09:00" && current < "20:00")`, making it consistent with the watchdog's operational window.
 
 ---
 
 ### Corrigido
 
 - **Recovery de slots perdidos no boot dispara fora da janela operacional** _(client.js)_
-  - No evento `client ready`, o bot iterava sobre slots passados do schedule e despachava imediatamente qualquer mensagem `waiting`. Esse bloco não tinha guard de janela de tempo, então reiniciar o bot entre 19:00 e 23:59 com a fila do dia seguinte já carregada disparava todos os slots de uma vez.
-  - Causa raiz: o watchdog (`checkMissedDispatches`) já protegia corretamente com `current >= "19:00"`, mas o bloco equivalente de recovery no boot em `client.js` não tinha essa guard.
-  - Correção: o bloco de recovery no boot agora é envolvido em `if (current >= "09:00" && current < "19:00")`, tornando-o consistente com a janela operacional do watchdog.
+  - No evento `client ready`, o bot iterava sobre slots passados do schedule e despachava imediatamente qualquer mensagem `waiting`. Esse bloco não tinha guard de janela de tempo, então reiniciar o bot entre 20:00 e 23:59 com a fila do dia seguinte já carregada disparava todos os slots de uma vez.
+  - Causa raiz: o watchdog (`checkMissedDispatches`) já protegia corretamente com `current >= "20:00"`, mas o bloco equivalente de recovery no boot em `client.js` não tinha essa guard.
+  - Correção: o bloco de recovery no boot agora é envolvido em `if (current >= "09:00" && current < "20:00")`, tornando-o consistente com a janela operacional do watchdog.
 
 ---
 

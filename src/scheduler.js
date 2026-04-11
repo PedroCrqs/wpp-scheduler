@@ -116,7 +116,7 @@ async function checkMissedDispatches() {
     );
     return;
   }
-  if (current < "09:00" || current >= "19:00") return;
+  if (current < "09:00" || current >= "20:00") return;
 
   state.SCHEDULE.forEach((time, index) => {
     if (time >= current) return;
