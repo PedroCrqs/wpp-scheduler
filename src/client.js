@@ -128,7 +128,7 @@ client.on("message_create", async (msg) => {
 
   if (!msg.fromMe || (msg.to !== state.myBsuid && msg.to !== myId)) return;
 
-  const botPrefixes = ["✅", "⚠️", "📊", "🗑️", "📋", "📤"];
+  const botPrefixes = ["✅", "⚠️", "📊", "🗑️", "📋", "📤", "🔺"];
   if (botPrefixes.some((p) => msg.body.startsWith(p))) return;
 
   const msgId = msg.id._serialized;
@@ -178,6 +178,10 @@ client.on("message_create", async (msg) => {
     class: announcementCls,
     targetGroups: targetGroups,
   };
+
+  if (INSTANCE === "account3") {
+    await msg.reply(entry.body);
+  }
 
   state.todayQueue.push(entry);
   await persistence.saveQueue();
