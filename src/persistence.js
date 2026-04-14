@@ -71,7 +71,7 @@ function loadSchedule() {
     const todaySP = new Date().toLocaleDateString("en-CA", {
       timeZone: "America/Sao_Paulo",
     });
-    if (Array.isArray(data) && data.length === 10)
+    if (Array.isArray(data) && data.length === 14)
       return { slots: data, date: todaySP };
     if (data.slots && data.date) return data;
   } catch {}

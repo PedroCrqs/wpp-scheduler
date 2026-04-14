@@ -10,7 +10,7 @@ const { queueDispatch } = require("./dispatcher");
 async function handleStatus(msg) {
   const status =
     `📊 *Bot Status*\n\n` +
-    `📨 Queue: ${state.todayQueue.length}/10\n` +
+    `📨 Queue: ${state.todayQueue.length}/14\n` +
     `✅ Dispatches done today: ${state.dispatchesDone}/${state.SCHEDULE.length}\n` +
     `⏳ Next dispatch: ${nextScheduledTime()}\n\n` +
     `_Queued messages:_\n` +

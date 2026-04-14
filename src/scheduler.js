@@ -26,6 +26,10 @@ function generateSchedule() {
     { hour: 16, minute: 0 },
     { hour: 17, minute: 0 },
     { hour: 18, minute: 0 },
+    { hour: 19, minute: 0 },
+    { hour: 20, minute: 0 },
+    { hour: 21, minute: 0 },
+    { hour: 22, minute: 0 },
   ];
   return base.map(({ hour, minute }) => {
     const jitter = Math.floor(Math.random() * 46);
@@ -97,8 +101,8 @@ async function dailyReset(reschedule = true) {
   await scheduleDispatches();
 
   try {
-    const myId = client.info.wid._serialized;
-    await client.sendMessage(myId, `🗑️ *Daily Reset Triggered!*\n\n`);
+    const myId = state.client.info.wid._serialized;
+    await state.client.sendMessage(myId, `🗑️ *Daily Reset Triggered!*\n\n`);
   } catch {}
 
   if (reschedule) {
@@ -118,7 +122,7 @@ async function checkMissedDispatches() {
   if (!state.scheduleDate || state.scheduleDate !== todaySP) {
     return;
   }
-  if (current < "09:00" || current >= "20:00") return;
+  if (current < "09:00") return;
 
   state.SCHEDULE.forEach((time, index) => {
     if (time >= current) return;
@@ -174,9 +178,9 @@ function initResetScheduler() {
   if (state.resetCronInitialized) return;
 
   const task = cron.schedule(
-    "0 20 * * *",
+    "0 00 * * *",
     async () => {
-      await persistence.log("RESET", "Daily reset triggered by cron (20:00)");
+      await persistence.log("RESET", "Daily reset triggered by cron (00:00)");
       await dailyReset();
     },
     { timezone: "America/Sao_Paulo" },

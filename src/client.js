@@ -98,7 +98,7 @@ client.on("ready", async () => {
     .replace(",", "")
     .trim();
 
-  if (current >= "09:00" && current < "20:00") {
+  if (current >= "09:00") {
     state.SCHEDULE.forEach((time, index) => {
       if (time < current) {
         const msg = state.todayQueue[index];
@@ -151,8 +151,8 @@ client.on("message_create", async (msg) => {
     return;
   }
 
-  if (state.todayQueue.length >= 10) {
-    await msg.reply("⚠️ Queue is full (10/10). Send *!clear* to reset.");
+  if (state.todayQueue.length >= 14) {
+    await msg.reply("⚠️ Queue is full (14/14). Send *!clear* to reset.");
     return;
   }
 
@@ -183,7 +183,7 @@ client.on("message_create", async (msg) => {
       : `✅ *${announcementCls}*`;
 
   await msg.reply(
-    `✅ *Message ${state.todayQueue.length}/10 received!*\n\n` +
+    `✅ *Message ${state.todayQueue.length}/14 received!*\n\n` +
       `📍 Neighborhood: *${neighborhood || "unidentified"}*\n` +
       `🏷️ Class: ${classText}\n` +
       `📢 Target groups: *${targetGroups.length}*\n\n` +

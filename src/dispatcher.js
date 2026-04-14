@@ -112,7 +112,7 @@ async function executeDispatch(index) {
     initResetScheduler();
   }
 
-  if (state.dispatchesDone === 10) {
+  if (state.dispatchesDone === 14) {
     await dailyReset(false);
   }
 
@@ -120,7 +120,7 @@ async function executeDispatch(index) {
     const myId = client.info.wid._serialized;
     await client.sendMessage(
       myId,
-      `📤 *Dispatch ${index + 1}/10 done* (${state.SCHEDULE[index] || "manual"})\n\n` +
+      `📤 *Dispatch ${index + 1}/14 done* (${state.SCHEDULE[index] || "manual"})\n\n` +
         `✅ Sent to ${successes} group(s)\n` +
         (failures > 0 ? `❌ Failed in ${failures} group(s)\n` : "") +
         `📝 "${message.preview}"`,
