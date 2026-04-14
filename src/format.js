@@ -19,4 +19,8 @@ function mergeFormat(msg) {
   }
 }
 
-module.exports = { mergeFormat };
+function mergeFormat2(msg) {
+  return msg.replace("⚡", "💥");
+}
+
+module.exports = { mergeFormat, mergeFormat2 };
