@@ -8,50 +8,60 @@ Baseado em [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [3.3.4] - 2026-04-11
+## [3.4.0] - 2026-04-12
+
+### Changed
+
+- **Dispatch slots expanded from 10 to 14** _(scheduler.js, dispatcher.js, commands.js, client.js)_
+  - Schedule now covers 09:00–22:00 with 14 slots (previously 09:00–18:00 with 10).
+  - `generateSchedule` updated with 4 new base slots: 19:00, 20:00, 21:00, 22:00.
+  - `dispatcher.js`: `dailyReset` now triggers at `dispatchesDone === 14`.
+  - `commands.js`: queue cap, status display, and fire validation updated to 14.
+  - `client.js`: queue full message updated to 14.
+
+- **Daily reset moved from 20:00 to 00:00** _(scheduler.js)_
+  - Reset cron updated from `"0 20 * * *"` to `"0 0 * * *"` to accommodate the extended dispatch window that now runs until 22:45.
+  - Watchdog operational window extended to `current >= "24:00"` (effectively disabled upper bound within a calendar day).
 
 ### Fixed
 
-- **Watchdog blocked all day when queue is loaded the day before** _(scheduler.js, persistence.js, commands.js)_
-  - When the operator loads the next day's queue before the reset (either via the 20:00 cron or after the 10th dispatch), `dailyReset` was setting `state.scheduleDate` to **today** (the day the reset ran). On the following day, `checkMissedDispatches` compared `state.scheduleDate` (yesterday) against `todaySP` (today) — they never matched, so the watchdog was silently blocked for the entire operational window, requiring manual `!fire` for every overdue slot.
-  - Root cause: `dailyReset` generates a schedule intended for the **next** operational day, but was stamping it with the current date. Since the last slot runs at most at 18:45 and the reset fires immediately after, it is impossible to load a same-day queue after `dailyReset` — the target date is always tomorrow.
-  - Fix: `dailyReset` now always computes tomorrow's date in `America/Sao_Paulo` and assigns it to `state.scheduleDate`, unconditionally. This applies to both triggers — the 20:00 cron and the post-10th-dispatch reset — since both call the same `dailyReset` function.
-  - Fix: `saveSchedule` in `persistence.js` now writes `state.scheduleDate` directly instead of recomputing `new Date()`, ensuring the correct future date is persisted to disk and survives bot restarts.
-  - Fix: `handleClear` in `commands.js` now explicitly sets `state.scheduleDate` to today before calling `saveSchedule`, since a manual clear always happens within the current operational day.
+- **`parseInt` base error in `handleFire`** _(commands.js)_
+  - `parseInt(parts[1], 14)` was using base 14 instead of base 10. While digits 0–9 parse identically, values like `"10"` would return `14` in decimal, causing `!fire 10` through `!fire 14` to silently resolve to wrong slot indices.
+  - Fix: corrected to `parseInt(parts[1], 10)`.
 
-- **Watchdog date-gate was spamming the log on every tick** _(scheduler.js)_
-  - The `checkMissedDispatches` guard logged a `WATCHDOG` entry every minute when the schedule date didn't match today, flooding the log file with hundreds of identical entries per day.
-  - Fix: the log call was removed from the mismatch guard. The condition now returns silently — it is expected behavior outside the operational window.
-
-### Added
-
-- **Daily reset confirmation message** _(scheduler.js)_
-  - After `dailyReset` completes, the bot now sends a WhatsApp notification to its own ID confirming the reset was triggered. Useful to distinguish reset-triggered restarts from silent ones in the operational flow.
+- **Daily reset notification never sent** _(scheduler.js)_
+  - `dailyReset` referenced `client` directly, which is not in scope in `scheduler.js`. The `ReferenceError` was silently swallowed by `catch {}`, so the confirmation message was never delivered.
+  - Fix: corrected to `state.client`.
 
 ---
+
+### Alterado
+
+- **Slots de disparo expandidos de 10 para 14** _(scheduler.js, dispatcher.js, commands.js, client.js)_
+  - Schedule agora cobre 09:00–22:00 com 14 slots (anteriormente 09:00–18:00 com 10).
+  - `generateSchedule` atualizado com 4 novos slots base: 19:00, 20:00, 21:00, 22:00.
+  - `dispatcher.js`: `dailyReset` agora dispara em `dispatchesDone === 14`.
+  - `commands.js`: limite de fila, exibição de status e validação do fire atualizados para 14.
+  - `client.js`: mensagem de fila cheia atualizada para 14.
+
+- **Reset diário movido das 20:00 para 00:00** _(scheduler.js)_
+  - Cron de reset atualizado de `"0 20 * * *"` para `"0 0 * * *"` para acomodar a janela de disparos estendida que agora vai até 22:45.
+  - Janela operacional do watchdog estendida para `current >= "24:00"`.
 
 ### Corrigido
 
-- **Watchdog bloqueado o dia todo quando a fila é carregada no dia anterior** _(scheduler.js, persistence.js, commands.js)_
-  - Quando o operador carrega a fila do dia seguinte antes do reset (seja pelo cron das 20:00 ou após o 10º disparo), o `dailyReset` gravava `state.scheduleDate` com a data de **hoje** (dia em que o reset ocorreu). No dia seguinte, `checkMissedDispatches` comparava `state.scheduleDate` (ontem) com `todaySP` (hoje) — nunca batiam, e o watchdog ficava bloqueado durante toda a janela operacional, exigindo `!fire` manual para cada slot atrasado.
-  - Causa raiz: `dailyReset` gera um schedule destinado ao **próximo** dia operacional, mas o marcava com a data corrente. Como o último slot roda no máximo às 18:45 e o reset dispara imediatamente após, é impossível carregar uma fila para o mesmo dia após o `dailyReset` — a data alvo é sempre amanhã.
-  - Correção: `dailyReset` agora sempre calcula a data de amanhã em `America/Sao_Paulo` e a atribui a `state.scheduleDate`, incondicionalmente. Isso se aplica aos dois gatilhos — cron das 20:00 e reset pós-10º-disparo — pois ambos chamam a mesma função `dailyReset`.
-  - Correção: `saveSchedule` em `persistence.js` agora grava `state.scheduleDate` diretamente em vez de recalcular `new Date()`, garantindo que a data futura correta seja persistida em disco e sobreviva a restarts do bot.
-  - Correção: `handleClear` em `commands.js` agora define explicitamente `state.scheduleDate` como hoje antes de chamar `saveSchedule`, pois um clear manual sempre ocorre dentro do dia operacional vigente.
+- **Erro de base no `parseInt` do `handleFire`** _(commands.js)_
+  - `parseInt(parts[1], 14)` usava base 14 em vez de base 10. Para valores como `"10"`, retornaria `14` em decimal, fazendo `!fire 10` a `!fire 14` resolverem índices errados silenciosamente.
+  - Correção: corrigido para `parseInt(parts[1], 10)`.
 
-- **Gate de data do watchdog spammava o log a cada tick** _(scheduler.js)_
-  - A guard de `checkMissedDispatches` logava uma entrada `WATCHDOG` a cada minuto quando a data do schedule não batia com hoje, inundando o arquivo de log com centenas de entradas idênticas por dia.
-  - Correção: a chamada de log foi removida da guard de mismatch. A condição agora retorna silenciosamente — é comportamento esperado fora da janela operacional.
-
-### Adicionado
-
-- **Mensagem de confirmação do reset diário** _(scheduler.js)_
-  - Após a conclusão do `dailyReset`, o bot agora envia uma notificação no WhatsApp para o próprio ID confirmando que o reset foi disparado. Útil para distinguir resets de restarts silenciosos no fluxo operacional.
+- **Notificação do reset diário nunca enviada** _(scheduler.js)_
+  - `dailyReset` referenciava `client` diretamente, que não existe no escopo de `scheduler.js`. O `ReferenceError` era engolido silenciosamente pelo `catch {}`, e a mensagem de confirmação nunca era entregue.
+  - Correção: corrigido para `state.client`.
 
 ---
 
-> **Commit:** `fix(scheduler): stamp scheduleDate as tomorrow on reset, silence watchdog log, notify on reset`  
-> **Tag:** `v3.3.4`
+> **Commit:** `feat(scheduler): expand to 14 slots (09–22h), fix reset cron, fix client ref in dailyReset, fix parseInt base`  
+> **Tag:** `v3.4.0`
 
 ---
 
