@@ -22,6 +22,7 @@ const {
   handleGroups,
   handleFire,
 } = require("./commands");
+const { mergeFormat } = require("./format");
 
 const client = new Client({
   authStrategy: new LocalAuth({
@@ -163,7 +164,7 @@ client.on("message_create", async (msg) => {
 
   const entry = {
     index: state.todayQueue.length,
-    body: msg.body,
+    body: INSTANCE === "account3" ? mergeFormat(msg.body) : msg.body,
     preview: previewMatch?.[0] ?? msg.body.substring(0, 60),
     receivedAt: new Date().toISOString(),
     dispatchedAt: null,
