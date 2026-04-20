@@ -31,7 +31,14 @@ const client = new Client({
   }),
   puppeteer: {
     headless: true,
-    args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    executablePath: "/usr/bin/chromium-browser",
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage", // Usa /tmp em vez de /dev/shm (evita o "Target closed")
+      "--disable-extensions",
+      "--no-first-run",
+    ],
   },
 });
 

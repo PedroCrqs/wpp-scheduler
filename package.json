@@ -11,5 +11,17 @@
     "node-cron": "^4.2.1",
     "qrcode-terminal": "^0.12.0",
     "whatsapp-web.js": "^1.34.6"
-  }
+  },
+  "devDependencies": {},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PedroCrqs/wpp-scheduler.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/PedroCrqs/wpp-scheduler/issues"
+  },
+  "homepage": "https://github.com/PedroCrqs/wpp-scheduler#readme"
 }
