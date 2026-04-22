@@ -190,6 +190,14 @@ function initResetScheduler() {
   state.resetCronInitialized = true;
 }
 
+async function handleStopMidnightReset(msg) {
+  state.resetCronTask.destroy();
+  state.resetCronTask = null;
+  state.resetCronInitialized = false;
+  await msg.reply("🛑 Daily midnight reset stopped.");
+  await persistence.log("COMMAND", "Midnight reset cron manually stopped");
+}
+
 module.exports = {
   generateSchedule,
   nextScheduledTime,
@@ -197,4 +205,5 @@ module.exports = {
   dailyReset,
   checkMissedDispatches,
   initResetScheduler,
+  handleStopMidnightReset,
 };

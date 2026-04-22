@@ -78,4 +78,29 @@ function loadSchedule() {
   return null;
 }
 
-module.exports = { log, saveQueue, loadQueue, saveSchedule, loadSchedule };
+async function recoverSendingSlots() {
+  const recovered = [];
+  for (let i = 0; i < state.todayQueue.length; i++) {
+    if (state.todayQueue[i].status === "sending") {
+      state.todayQueue[i].status = "waiting";
+      recovered.push(i + 1);
+    }
+  }
+  if (recovered.length > 0) {
+    await saveQueue();
+    await log(
+      "RECOVERY",
+      `Slots reset from "sending" → "waiting" on boot: [${recovered.join(", ")}]`,
+    );
+  }
+  return recovered;
+}
+
+module.exports = {
+  log,
+  saveQueue,
+  loadQueue,
+  saveSchedule,
+  loadSchedule,
+  recoverSendingSlots,
+};

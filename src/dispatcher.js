@@ -57,6 +57,7 @@ async function executeDispatch(index) {
   }
 
   state.todayQueue[index].status = "sending";
+  state.todayQueue[index].dispatchStartedAt = new Date().toISOString();
   await persistence.saveQueue();
 
   let successes = 0;
@@ -81,6 +82,8 @@ async function executeDispatch(index) {
         `Slot ${index + 1} → ${chat.name || groupId}`,
       );
       successes++;
+      state.todayQueue[index].result = { successes, failures };
+      await persistence.saveQueue();
 
       if ((i + 1) % 5 === 0) {
         await sleep(15000 + Math.random() * 20000);

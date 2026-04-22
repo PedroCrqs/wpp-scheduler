@@ -12,6 +12,7 @@ const state = {
   resetCronInitialized: false,
   watchdogScheduled: new Set(),
   scheduleDate: null,
+  bootRecoveredAt: null,
 };
 
 module.exports = state;
