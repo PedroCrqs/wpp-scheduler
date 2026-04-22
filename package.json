@@ -1,6 +1,6 @@
 {
   "name": "whatsapp-scheduler-bot",
-  "version": "3.5.0",
+  "version": "3.5.1",
   "description": "Bot WhatsApp para disparo de mensagens agendadas em grupos",
   "main": "index.js",
   "scripts": {

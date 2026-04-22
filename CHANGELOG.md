@@ -8,6 +8,35 @@ Baseado em [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [3.5.1] - 2026-04-21
+
+### Fixed
+
+- **`"sending"` slots no longer get stuck after bot crash or power loss** _(persistence.js, dispatcher.js, state.js)_
+  - Root cause: when the bot was killed mid-dispatch, the slot status remained `"sending"` on disk. On reboot, `checkMissedDispatches` skipped those slots (status ≠ `"waiting"`), leaving them permanently stuck and causing PM2 instability.
+  - Fix: `recoverSendingSlots()` added to `persistence.js`. Must be called in `client.js` after `loadQueue()` on boot. It resets any `"sending"` slot back to `"waiting"` and logs which slots were recovered.
+  - `dispatcher.js` now persists `result: { successes, failures }` to disk after **each individual group send**, not only at the end of the slot. This provides a mid-slot progress snapshot on disk if the bot crashes partway through.
+  - `dispatcher.js` now stamps `dispatchStartedAt` on the queue entry when a slot begins, improving crash forensics.
+  - `state.js`: added `bootRecoveredAt` field to record the timestamp of the last boot recovery, surfaceable via `!status`.
+
+---
+
+### Corrigido
+
+- **Slots `"sending"` não ficam mais presos após queda do bot ou falta de luz** _(persistence.js, dispatcher.js, state.js)_
+  - Causa raiz: quando o bot era encerrado no meio de um disparo, o status do slot permanecia `"sending"` em disco. No reboot, o `checkMissedDispatches` ignorava esses slots (status ≠ `"waiting"`), deixando-os presos permanentemente e causando instabilidade no PM2.
+  - Correção: `recoverSendingSlots()` adicionada ao `persistence.js`. Deve ser chamada no `client.js` após `loadQueue()` no boot. Reverte qualquer slot `"sending"` para `"waiting"` e loga quais foram recuperados.
+  - `dispatcher.js` agora persiste `result: { successes, failures }` em disco após **cada grupo enviado individualmente**, não apenas ao fim do slot. Isso fornece um snapshot de progresso parcial em disco caso o bot caia no meio de um slot.
+  - `dispatcher.js` agora grava `dispatchStartedAt` na entrada da fila quando um slot começa, melhorando a rastreabilidade em caso de crash.
+  - `state.js`: adicionado campo `bootRecoveredAt` para registrar o timestamp do último recovery de boot, exposto via `!status`.
+
+---
+
+> **Commit:** `fix(persistence): recover "sending" slots on boot, add incremental dispatch progress`  
+> **Tag:** `v3.5.1`
+
+---
+
 ## [3.5.0] - 2026-04-21
 
 ### Added
