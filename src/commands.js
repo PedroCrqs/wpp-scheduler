@@ -1,6 +1,7 @@
 const state = require("./state");
 const persistence = require("./persistence");
 const {
+  dailyReset,
   generateSchedule,
   nextScheduledTime,
   scheduleDispatches,
@@ -97,8 +98,14 @@ async function handleStopMidnightReset(msg) {
   state.resetCronTask.destroy();
   state.resetCronTask = null;
   state.resetCronInitialized = false;
-  await msg.reply("🗑️ Daily midnight reset stopped.");
+  await msg.reply("🛑 Daily midnight reset stopped.");
   await persistence.log("COMMAND", "Midnight reset cron manually stopped");
+}
+
+async function handleReset(msg, reschedule) {
+  await dailyReset(reschedule);
+  await msg.reply("🗑️ Manual reset.");
+  await persistence.log("COMMAND", "Bot reset manually");
 }
 
 module.exports = {
@@ -107,4 +114,5 @@ module.exports = {
   handleGroups,
   handleStatus,
   handleStopMidnightReset,
+  handleReset,
 };

@@ -22,6 +22,7 @@ const {
   handleGroups,
   handleFire,
   handleStopMidnightReset,
+  handleReset,
 } = require("./commands");
 const { mergeFormat, mergeFormat2 } = require("./format");
 
@@ -136,7 +137,7 @@ client.on("message_create", async (msg) => {
 
   if (!msg.fromMe || (msg.to !== state.myBsuid && msg.to !== myId)) return;
 
-  const botPrefixes = ["✅", "⚠️", "📊", "🗑️", "📋", "📤", "🔺"];
+  const botPrefixes = ["✅", "⚠️", "📊", "🗑️", "📋", "📤", "🔺", "🛑"];
   if (botPrefixes.some((p) => msg.body.startsWith(p))) return;
 
   const msgId = msg.id._serialized;
@@ -161,6 +162,14 @@ client.on("message_create", async (msg) => {
   }
   if (msg.body.startsWith("!stopreset")) {
     await handleStopMidnightReset(msg);
+    return;
+  }
+  if (msg.body.startsWith("!reset*")) {
+    await handleReset(msg, true);
+    return;
+  }
+  if (msg.body.startsWith("!reset")) {
+    await handleReset(msg, false);
     return;
   }
 
