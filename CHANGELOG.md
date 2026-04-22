@@ -8,6 +8,53 @@ Baseado em [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [3.6.0] - 2026-04-21
+
+### Added
+
+- **`handleReset` command (`!reset` / `!reset*`)** _(commands.js, client.js)_
+  - `!reset` triggers a full `dailyReset(false)` — clears queue, counters, schedule and re-arms slot crons, without rescheduling the midnight reset cron.
+  - `!reset*` triggers `dailyReset(true)` — same as above but also re-arms the midnight reset cron.
+  - `reschedule` parameter is passed from `client.js` to `handleReset`, keeping the command handler decoupled from the reset lifecycle decision.
+  - `handleReset` correctly uses `await dailyReset(reschedule)`, ensuring the reply is only sent after the reset completes.
+  - `handleReset` exported from `commands.js` and imported in `client.js`.
+
+### Fixed
+
+- **`!reset*` was dead code due to incorrect routing order** _(client.js)_
+  - `startsWith("!reset")` was evaluated before `startsWith("!reset*")`, making the latter unreachable. Order corrected: specific patterns now checked before generic ones.
+- **`🛑` added to `botPrefixes`** _(client.js)_
+  - Bot reply prefix list updated to include `🛑` to prevent self-triggered command loops from `handleStopMidnightReset` replies.
+- **`handleStopMidnightReset` reply updated to `🛑`** _(commands.js)_
+  - Reply emoji changed from `🗑️` to `🛑` to semantically distinguish a stop action from a clear/reset action, and to align with the updated `botPrefixes` guard.
+
+---
+
+### Adicionado
+
+- **Comando `handleReset` (`!reset` / `!reset*`)** _(commands.js, client.js)_
+  - `!reset` executa `dailyReset(false)` — limpa fila, contadores e schedule e reagenda os slot crons, sem rearmar o cron de meia-noite.
+  - `!reset*` executa `dailyReset(true)` — igual ao anterior, mas também reativa o cron de meia-noite.
+  - O parâmetro `reschedule` é passado do `client.js` para o `handleReset`, mantendo o handler desacoplado da decisão do ciclo de vida do reset.
+  - `handleReset` usa corretamente `await dailyReset(reschedule)`, garantindo que o reply só seja enviado após o reset concluir.
+  - `handleReset` exportado de `commands.js` e importado em `client.js`.
+
+### Corrigido
+
+- **`!reset*` era código morto por ordem incorreta no roteamento** _(client.js)_
+  - `startsWith("!reset")` era avaliado antes de `startsWith("!reset*")`, tornando este último inalcançável. Ordem corrigida: padrões mais específicos agora são verificados antes dos genéricos.
+- **`🛑` adicionado ao `botPrefixes`** _(client.js)_
+  - Lista de prefixos de resposta do bot atualizada para incluir `🛑`, prevenindo loops de comando auto-acionados pelas respostas do `handleStopMidnightReset`.
+- **Reply do `handleStopMidnightReset` atualizado para `🛑`** _(commands.js)_
+  - Emoji do reply alterado de `🗑️` para `🛑` para distinguir semanticamente uma ação de parada de uma ação de limpeza/reset, e para alinhar com o guard de `botPrefixes` atualizado.
+
+---
+
+> **Commit:** `feat(commands): add !reset and !reset* commands, fix routing order, update botPrefixes`  
+> **Tag:** `v3.6.0`
+
+---
+
 ## [3.5.1] - 2026-04-21
 
 ### Fixed
