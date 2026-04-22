@@ -8,6 +8,56 @@ Baseado em [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [3.5.0] - 2026-04-21
+
+### Added
+
+- **`handleStopMidnightReset`: manual stop command for the midnight reset cron** _(scheduler.js)_
+  - Allows the operator to cancel the scheduled midnight reset on demand.
+  - Destroys the active `resetCronTask`, sets it to `null`, clears `resetCronInitialized`, and sends a confirmation reply to the user.
+  - Action is logged via `persistence.log("COMMAND", ...)` for audit trail.
+
+---
+
+### Adicionado
+
+- **`handleStopMidnightReset`: comando para parar manualmente o cron de reset de meia-noite** _(scheduler.js)_
+  - Permite que o operador cancele o reset agendado de meia-noite sob demanda.
+  - Destrói o `resetCronTask` ativo, define como `null`, limpa `resetCronInitialized` e envia confirmação ao usuário.
+  - Ação é registrada via `persistence.log("COMMAND", ...)` para rastreabilidade.
+
+---
+
+> **Commit:** `feat(scheduler): add handleStopMidnightReset command`  
+> **Tag:** `v3.5.0`
+
+---
+
+## [3.4.1] - 2026-04-21
+
+### Changed
+
+- **`checkMissedDispatches`: overdue slots now fire with a random delay of 20–40 minutes** _(scheduler.js)_
+  - Instead of firing immediately, each overdue slot is scheduled via `setTimeout` with a random delay between 20 and 40 minutes.
+  - Before firing, the slot status is re-checked to ensure it is still `"waiting"`, preventing duplicate dispatches if another process already handled it during the delay window.
+  - Log updated to include the randomly chosen delay in minutes.
+
+---
+
+### Alterado
+
+- **`checkMissedDispatches`: slots atrasados agora disparam com delay aleatório de 20–40 minutos** _(scheduler.js)_
+  - Em vez de disparar imediatamente, cada slot atrasado é agendado via `setTimeout` com delay aleatório entre 20 e 40 minutos.
+  - Antes de disparar, o status do slot é reverificado para garantir que ainda está `"waiting"`, prevenindo disparos duplicados caso outro processo já tenha processado o slot durante o período de espera.
+  - Log atualizado para incluir o delay sorteado em minutos.
+
+---
+
+> **Commit:** `fix(scheduler): add random 20–40min delay on missed dispatches`  
+> **Tag:** `v3.4.1`
+
+---
+
 ## [3.4.0] - 2026-04-12
 
 ### Changed
