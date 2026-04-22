@@ -164,7 +164,7 @@ client.on("message_create", async (msg) => {
     await handleStopMidnightReset(msg);
     return;
   }
-  if (msg.body.startsWith("!reset*")) {
+  if (msg.body.startsWith("!reset --reschedule")) {
     await handleReset(msg, true);
     return;
   }

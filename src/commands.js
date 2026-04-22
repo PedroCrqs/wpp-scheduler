@@ -104,6 +104,11 @@ async function handleStopMidnightReset(msg) {
 
 async function handleReset(msg, reschedule) {
   await dailyReset(reschedule);
+  if (reschedule) {
+    await msg.reply("🗑️ Manual reset with reschedule.");
+    await persistence.log("COMMAND", "Bot reset manually with reschedule");
+    return;
+  }
   await msg.reply("🗑️ Manual reset.");
   await persistence.log("COMMAND", "Bot reset manually");
 }
