@@ -8,6 +8,37 @@ Baseado em [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [3.6.1] - 2026-04-21
+
+### Changed
+
+- **`!reset --reschedule` replaces `!reset*`** _(client.js)_
+  - Variant syntax changed from `!reset*` to `!reset --reschedule` for clarity and consistency with CLI conventions.
+  - Routing order preserved: `!reset --reschedule` is checked before `!reset` to avoid the more specific pattern being swallowed by the generic one.
+- **`handleReset` log now distinguishes reschedule mode** _(commands.js)_
+  - Previously logged `"Bot reset manually"` regardless of the `reschedule` flag.
+  - Now logs `"Bot reset manually with reschedule"` when `reschedule` is `true`, and `"Bot reset manually"` when `false`, improving audit trail granularity.
+  - Reply message updated accordingly: `"🗑️ Manual reset with reschedule."` vs `"🗑️ Manual reset."`.
+
+---
+
+### Alterado
+
+- **`!reset --reschedule` substitui `!reset*`** _(client.js)_
+  - Sintaxe da variante alterada de `!reset*` para `!reset --reschedule` para maior clareza e consistência com convenções de CLI.
+  - Ordem de roteamento preservada: `!reset --reschedule` é verificado antes de `!reset` para evitar que o padrão mais específico seja capturado pelo genérico.
+- **Log do `handleReset` agora distingue o modo de reschedule** _(commands.js)_
+  - Anteriormente logava `"Bot reset manually"` independente do flag `reschedule`.
+  - Agora loga `"Bot reset manually with reschedule"` quando `reschedule` é `true`, e `"Bot reset manually"` quando `false`, melhorando a granularidade da trilha de auditoria.
+  - Mensagem de reply atualizada de acordo: `"🗑️ Manual reset with reschedule."` vs `"🗑️ Manual reset."`.
+
+---
+
+> **Commit:** `fix(commands): replace !reset* with !reset --reschedule, split reset log by reschedule flag`  
+> **Tag:** `v3.6.1`
+
+---
+
 ## [3.6.0] - 2026-04-21
 
 ### Added
