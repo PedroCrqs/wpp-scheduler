@@ -93,4 +93,18 @@ async function handleFire(msg) {
   return;
 }
 
-module.exports = { handleClear, handleFire, handleGroups, handleStatus };
+async function handleStopMidnightReset(msg) {
+  state.resetCronTask.destroy();
+  state.resetCronTask = null;
+  state.resetCronInitialized = false;
+  await msg.reply("🗑️ Daily midnight reset stopped.");
+  await persistence.log("COMMAND", "Midnight reset cron manually stopped");
+}
+
+module.exports = {
+  handleClear,
+  handleFire,
+  handleGroups,
+  handleStatus,
+  handleStopMidnightReset,
+};

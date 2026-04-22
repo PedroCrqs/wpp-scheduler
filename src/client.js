@@ -21,6 +21,7 @@ const {
   handleClear,
   handleGroups,
   handleFire,
+  handleStopMidnightReset,
 } = require("./commands");
 const { mergeFormat, mergeFormat2 } = require("./format");
 
@@ -156,6 +157,10 @@ client.on("message_create", async (msg) => {
   }
   if (msg.body.startsWith("!fire")) {
     await handleFire(msg);
+    return;
+  }
+  if (msg.body.startsWith("!stopreset")) {
+    await handleStopMidnightReset(msg);
     return;
   }
 
