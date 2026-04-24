@@ -88,6 +88,7 @@ client.on("ready", async () => {
     `Queue: ${state.todayQueue.length} message(s) | ${state.dispatchesDone} already dispatched`,
   );
 
+  await persistence.recoverSendingSlots();
   await scheduleDispatches();
 
   if (!state.resetCronInitialized) {
