@@ -91,6 +91,15 @@ async function executeDispatch(index) {
         await sleep(4000 + Math.random() * 8000);
       }
     } catch (err) {
+      // Frame ID is dynamic per Chromium session — match by prefix only,
+      // never hardcode the full ID or this check will never trigger.
+      if (err.message.includes("Attempted to use detached Frame")) {
+        await persistence.log(
+          "ERROR",
+          `Slot ${index + 1}: detached frame — aborting dispatch and exiting for restart`,
+        );
+        process.exit(1);
+      }
       await persistence.log(
         "ERROR",
         `Slot ${index + 1} → ${groupId}: ${err.message}`,
