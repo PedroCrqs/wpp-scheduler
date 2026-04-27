@@ -8,6 +8,29 @@ Baseado em [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [3.6.2] - 2026-04-27
+
+### Fixed
+
+- **Detached frame detection now uses generic match** _(dispatcher.js)_
+  - Previous check used a hardcoded Chromium frame ID (`'1F87160AD4DB2804E122156AA154735E`), which is generated dynamically per session and never matched in practice — making the guard dead code.
+  - Fix: replaced with a generic `includes("Attempted to use detached Frame")` match, ensuring `process.exit(1)` fires correctly on the first failed group instead of letting the loop continue through all remaining groups.
+
+---
+
+### Corrigido
+
+- **Detecção de frame destacado agora usa match genérico** _(dispatcher.js)_
+  - A verificação anterior usava um frame ID hardcoded do Chromium (`'1F87160AD4DB2804E122156AA154735E`), gerado dinamicamente por sessão e que nunca correspondia na prática — tornando o guard código morto.
+  - Correção: substituído por `includes("Attempted to use detached Frame")` genérico, garantindo que o `process.exit(1)` dispare corretamente no primeiro grupo com falha, em vez de continuar o loop pelos grupos restantes.
+
+---
+
+> **Commit:** `fix(dispatcher): fix detached frame detection, replace hardcoded frame ID with generic match`  
+> **Tag:** `v3.6.2`
+
+---
+
 ## [3.6.1] - 2026-04-21
 
 ### Changed
