@@ -8,6 +8,29 @@ Baseado em [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [3.6.3] - 2026-04-28
+
+### Fixed
+
+- **Dispatch now exits on unrecoverable network errors** _(dispatcher.js)_
+  - `net::ERR_NETWORK_CHANGED` and `net::ERR_NAME_NOT_RESOLVED` were previously swallowed as regular failures, letting the loop continue through all remaining groups with guaranteed errors.
+  - Fix: both errors now trigger `process.exit(1)` immediately, delegating recovery to PM2.
+
+---
+
+### Corrigido
+
+- **Dispatch agora encerra em erros de rede irrecuperáveis** _(dispatcher.js)_
+  - `net::ERR_NETWORK_CHANGED` e `net::ERR_NAME_NOT_RESOLVED` eram tratados como falhas comuns, permitindo que o loop continuasse pelos grupos restantes com erros garantidos.
+  - Correção: ambos os erros agora disparam `process.exit(1)` imediatamente, delegando a recuperação ao PM2.
+
+---
+
+> **Commit:** `fix(dispatcher): exit on network errors (ERR_NETWORK_CHANGED, ERR_NAME_NOT_RESOLVED)`  
+> **Tag:** `v3.6.3`
+
+---
+
 ## [3.6.2] - 2026-04-27
 
 ### Fixed
