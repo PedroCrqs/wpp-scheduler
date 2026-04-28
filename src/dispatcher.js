@@ -100,6 +100,16 @@ async function executeDispatch(index) {
         );
         process.exit(1);
       }
+      if (
+        err.message.includes("net::ERR_NETWORK_CHANGED") ||
+        err.message.includes("net::ERR_NAME_NOT_RESOLVED")
+      ) {
+        await persistence.log(
+          "ERROR",
+          `Slot ${index + 1}: network error — exiting for restart`,
+        );
+        process.exit(1);
+      }
       await persistence.log(
         "ERROR",
         `Slot ${index + 1} → ${groupId}: ${err.message}`,
