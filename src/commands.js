@@ -8,6 +8,33 @@ const {
 } = require("./scheduler");
 const { queueDispatch } = require("./dispatcher");
 
+/**
+ *
+ *   const { autoFeedQueue } = require("./scheduler");
+ *
+ * Substitua a função handleReset pela versão abaixo.
+ * O resto do arquivo permanece idêntico.
+ *
+ * O que muda:
+ *   Após limpar o estado, chama autoFeedQueue() para popular a fila
+ *   automaticamente com anúncios do banco SQLite.
+ */
+
+// ─── Novo handleReset ────────────────────────────────────────────────────────
+async function handleReset(msg, reschedule = false) {
+  const { dailyReset } = require("./scheduler");
+
+  // dailyReset já chama autoFeedQueue internamente (ver scheduler.js)
+  await dailyReset(reschedule);
+
+  const loaded = state.todayQueue.length;
+
+  await msg.reply(
+    `🗑️ *Reset executed!*\n\n` +
+      `📦 ${loaded} ad(s) automatically loaded from the database.\n` +
+      `⏰ New schedule: ${state.SCHEDULE.join(", ")}`,
+  );
+}
 async function handleStatus(msg) {
   const status =
     `📊 *Bot Status*\n\n` +
@@ -100,17 +127,6 @@ async function handleStopMidnightReset(msg) {
   state.resetCronInitialized = false;
   await msg.reply("🛑 Daily midnight reset stopped.");
   await persistence.log("COMMAND", "Midnight reset cron manually stopped");
-}
-
-async function handleReset(msg, reschedule) {
-  await dailyReset(reschedule);
-  if (reschedule) {
-    await msg.reply("🗑️ Manual reset with reschedule.");
-    await persistence.log("COMMAND", "Bot reset manually with reschedule");
-    return;
-  }
-  await msg.reply("🗑️ Manual reset.");
-  await persistence.log("COMMAND", "Bot reset manually");
 }
 
 module.exports = {

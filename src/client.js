@@ -1,3 +1,14 @@
+/**
+ * client.js
+ *
+ * Alterações em relação à versão original:
+ *   - Importa autoFeedQueue de scheduler.js.
+ *   - No evento "ready": se a fila estiver vazia após carregar do disco,
+ *     chama autoFeedQueue para popular via SQLite automaticamente.
+ *   - O fluxo manual de envio de mensagens continua funcionando normalmente
+ *     (permite sobrescrever/acrescentar mensagens fora do auto-feed).
+ */
+
 const { Client, LocalAuth } = require("whatsapp-web.js");
 const qrcode = require("qrcode-terminal");
 const cron = require("node-cron");
@@ -9,6 +20,7 @@ const {
   scheduleDispatches,
   checkMissedDispatches,
   initResetScheduler,
+  autoFeedQueue, // ← novo
 } = require("./scheduler");
 const { queueDispatch } = require("./dispatcher");
 const {
@@ -26,6 +38,7 @@ const {
 } = require("./commands");
 const { mergeFormat, mergeFormat2 } = require("./format");
 
+// ─── Criação do cliente WhatsApp ─────────────────────────────────────────────
 const client = new Client({
   authStrategy: new LocalAuth({
     clientId: `scheduler-bot-${INSTANCE}`,
@@ -37,7 +50,7 @@ const client = new Client({
     args: [
       "--no-sandbox",
       "--disable-setuid-sandbox",
-      "--disable-dev-shm-usage", // Usa /tmp em vez de /dev/shm (evita o "Target closed")
+      "--disable-dev-shm-usage",
       "--disable-extensions",
       "--no-first-run",
     ],
@@ -46,6 +59,7 @@ const client = new Client({
 
 state.client = client;
 
+// ─── QR Code ─────────────────────────────────────────────────────────────────
 client.on("qr", (qr) => {
   console.log("\n══════════════════════════════════════════");
   console.log("  Escaneie o QR Code abaixo com o WhatsApp");
@@ -53,16 +67,19 @@ client.on("qr", (qr) => {
   qrcode.generate(qr, { small: true });
 });
 
+// ─── Ready ───────────────────────────────────────────────────────────────────
 client.on("ready", async () => {
   await persistence.log("BOT", "WhatsApp client ready ✓");
   state.myBsuid = ACCOUNTS[INSTANCE].myBsuid;
   console.log("BSUID:", state.myBsuid);
 
+  // Carrega fila salva em disco
   state.todayQueue = persistence.loadQueue();
   state.dispatchesDone = state.todayQueue.filter(
     (m) => m.status === "sent",
   ).length;
 
+  // Carrega ou gera schedule
   const savedSchedule = persistence.loadSchedule();
   if (savedSchedule) {
     state.SCHEDULE = savedSchedule.slots;
@@ -88,6 +105,19 @@ client.on("ready", async () => {
     `Queue: ${state.todayQueue.length} message(s) | ${state.dispatchesDone} already dispatched`,
   );
 
+  // ── AUTO-FEED no boot: se não há nada na fila, busca do banco ────────────
+  if (state.todayQueue.length === 0) {
+    await persistence.log(
+      "BOT",
+      "Fila vazia no boot — iniciando auto-feed do banco…",
+    );
+    const loaded = await autoFeedQueue();
+    await persistence.log(
+      "BOT",
+      `Auto-feed no boot: ${loaded} anúncio(s) carregados.`,
+    );
+  }
+
   await persistence.recoverSendingSlots();
   await scheduleDispatches();
 
@@ -99,6 +129,7 @@ client.on("ready", async () => {
     timezone: "America/Sao_Paulo",
   });
 
+  // Dispara slots que passaram enquanto o bot estava offline
   const current = new Date()
     .toLocaleString("en-US", {
       timeZone: "America/Sao_Paulo",
@@ -125,6 +156,7 @@ client.on("ready", async () => {
   }
 });
 
+// ─── Eventos de sessão ───────────────────────────────────────────────────────
 client.on("auth_failure", (msg) => {
   persistence.log("ERROR", `Auth failure: ${msg}`);
 });
@@ -133,6 +165,7 @@ client.on("disconnected", (reason) => {
   persistence.log("WARN", `Disconnected: ${reason}`);
 });
 
+// ─── Recebimento de mensagens ────────────────────────────────────────────────
 client.on("message_create", async (msg) => {
   const myId = client.info.wid._serialized;
 
@@ -145,6 +178,7 @@ client.on("message_create", async (msg) => {
   if (state.processedMessages.has(msgId)) return;
   state.processedMessages.add(msgId);
 
+  // ── Comandos ──────────────────────────────────────────────────────────────
   if (msg.body === "!status") {
     await handleStatus(msg);
     return;
@@ -174,11 +208,13 @@ client.on("message_create", async (msg) => {
     return;
   }
 
+  // ── Limite de fila ────────────────────────────────────────────────────────
   if (state.todayQueue.length >= 14) {
     await msg.reply("⚠️ Queue is full (14/14). Send *!clear* to reset.");
     return;
   }
 
+  // ── Entrada manual (fluxo original mantido) ───────────────────────────────
   const neighborhood = extractNeighborhood(msg.body);
   const announcementCls = classifyNeighborhood(neighborhood);
   const targetGroups = resolveGroups(announcementCls);
@@ -198,7 +234,7 @@ client.on("message_create", async (msg) => {
     status: "waiting",
     neighborhood: neighborhood || "unidentified",
     class: announcementCls,
-    targetGroups: targetGroups,
+    targetGroups,
   };
 
   if (INSTANCE === "account3") {
@@ -221,6 +257,7 @@ client.on("message_create", async (msg) => {
       `📢 Target groups: *${targetGroups.length}*\n\n` +
       `⏰ Scheduled for *${scheduledTime}*`,
   );
+
   await persistence.log(
     "RECEIVED",
     `Msg ${state.todayQueue.length} | neighborhood: ${neighborhood} | class: ${announcementCls} | groups: ${targetGroups.length}`,
