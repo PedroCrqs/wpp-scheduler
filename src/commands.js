@@ -8,33 +8,16 @@ const {
 } = require("./scheduler");
 const { queueDispatch } = require("./dispatcher");
 
-/**
- *
- *   const { autoFeedQueue } = require("./scheduler");
- *
- * Substitua a função handleReset pela versão abaixo.
- * O resto do arquivo permanece idêntico.
- *
- * O que muda:
- *   Após limpar o estado, chama autoFeedQueue() para popular a fila
- *   automaticamente com anúncios do banco SQLite.
- */
-
-// ─── Novo handleReset ────────────────────────────────────────────────────────
 async function handleReset(msg, reschedule = false) {
-  const { dailyReset } = require("./scheduler");
-
-  // dailyReset já chama autoFeedQueue internamente (ver scheduler.js)
-  await dailyReset(reschedule);
-
-  const loaded = state.todayQueue.length;
+  const loaded = await dailyReset(reschedule);
 
   await msg.reply(
-    `🗑️ *Reset executed!*\n\n` +
+    `🗑️ *Manual reset executed!*\n\n` +
       `📦 ${loaded} ad(s) automatically loaded from the database.\n` +
       `⏰ New schedule: ${state.SCHEDULE.join(", ")}`,
   );
 }
+
 async function handleStatus(msg) {
   const status =
     `📊 *Bot Status*\n\n` +
@@ -46,7 +29,6 @@ async function handleStatus(msg) {
       .map((m, i) => `${i + 1}. [${m.status}] ${m.preview}`)
       .join("\n");
   await msg.reply(status);
-  return;
 }
 
 async function handleClear(msg) {
@@ -71,7 +53,6 @@ async function handleGroups(client, msg) {
     .map((g) => `• ${g.name}\n  ID: \`${g.id._serialized}\``)
     .join("\n\n");
   await msg.reply(`📋 *Available groups:*\n\n${list}`);
-  return;
 }
 
 async function handleFire(msg) {
@@ -118,7 +99,6 @@ async function handleFire(msg) {
     `Manual fire requested for slot ${targetIndex + 1}`,
   );
   queueDispatch(targetIndex);
-  return;
 }
 
 async function handleStopMidnightReset(msg) {

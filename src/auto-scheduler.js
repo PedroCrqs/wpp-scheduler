@@ -1,13 +1,27 @@
 /**
  * auto-scheduler.js
  *
- * Alimenta state.todayQueue automaticamente após qualquer reset,
- * buscando imóveis disponíveis na tabela Imoveis do SQLite.
+ * Regras de despacho:
  *
- * Coordenação entre instâncias (account1/2/3):
- *   A tabela Dispatched_Today (definida no schema.sql) registra
- *   quais ImovelIDs já foram reservados hoje por qualquer instância.
- *   A PRIMARY KEY (ImovelID, Reserved_At) é a trava atômica entre processos.
+ *   1. Nenhum robô pode enviar o mesmo imóvel no mesmo dia
+ *      (coordenação via Dispatched_Today, PRIMARY KEY em ImovelID + Reserved_At).
+ *
+ *   2. Cada robô percorre a tabela Imoveis em ciclos independentes.
+ *      Um imóvel só pode ser reenviado pela mesma instância quando
+ *      todos os imóveis disponíveis já tiverem sido enviados por ela
+ *      ao menos uma vez (Dispatch_Cycle rastreia o progresso do ciclo).
+ *
+ * Tabelas necessárias (schema.sql + migration):
+ *
+ *   Dispatched_Today — deduplicação diária entre instâncias
+ *     ImovelID    INTEGER  PK parcial (com Reserved_At)
+ *     Instance    TEXT
+ *     Reserved_At TEXT     YYYY-MM-DD
+ *
+ *   Dispatch_Cycle — progresso do ciclo por instância
+ *     ImovelID    INTEGER  PK parcial (com Instance)
+ *     Instance    TEXT
+ *     SentAt      TEXT     YYYY-MM-DD
  */
 
 const { DatabaseSync } = require("node:sqlite");
@@ -19,30 +33,104 @@ const {
 const { mergeFormat, mergeFormat2 } = require("./format");
 const { INSTANCE } = require("./config");
 const persistence = require("./persistence");
-const state = require("./state");
 
 const DB_PATH =
   "/home/pedrocrqs/main-project-database/imoveis-database/data/imoveis.db";
 
-// ─── Data de hoje no fuso de SP ──────────────────────────────────────────────
 function todaySP() {
   return new Date().toLocaleDateString("en-CA", {
     timeZone: "America/Sao_Paulo",
   });
 }
 
-// ─── Formatação por instância ────────────────────────────────────────────────
 function applyFormat(body) {
   if (INSTANCE === "account3") return mergeFormat(body);
   if (INSTANCE === "account1") return mergeFormat2(body);
-  return body; // account2: sem alteração
+  return body;
 }
 
 /**
- * Reserva até `limit` imóveis disponíveis que ainda não foram
- * disparados hoje por nenhuma instância.
- *
- * @returns {Array} Entradas prontas para state.todayQueue
+ * Retorna IDs disponíveis para esta instância no ciclo atual.
+ * Se o ciclo estiver esgotado, reseta e recomeça do zero.
+ */
+function getAvailableForCycle(db, instance) {
+  const available = db
+    .prepare(
+      `
+    SELECT ImovelID
+    FROM   Imoveis
+    WHERE  ImovelStatus = 'Disponível'
+      AND  ImovelID NOT IN (
+             SELECT ImovelID
+             FROM   Dispatch_Cycle
+             WHERE  Instance = ?
+           )
+    ORDER BY ImovelID ASC
+  `,
+    )
+    .all(instance);
+
+  if (available.length > 0) {
+    return available.map((r) => r.ImovelID);
+  }
+
+  // Ciclo esgotado — reseta esta instância
+  db.prepare("DELETE FROM Dispatch_Cycle WHERE Instance = ?").run(instance);
+
+  persistence.log(
+    "AUTO-SCHEDULER",
+    `Cycle completed for ${instance} — resetting and starting over.`,
+  );
+
+  return db
+    .prepare(
+      `
+    SELECT ImovelID
+    FROM   Imoveis
+    WHERE  ImovelStatus = 'Disponível'
+    ORDER BY ImovelID ASC
+  `,
+    )
+    .all()
+    .map((r) => r.ImovelID);
+}
+
+/**
+ * Tenta reservar IDs na Dispatched_Today para hoje.
+ * Retorna apenas os IDs efetivamente reservados (INSERT changes > 0).
+ */
+function reserveForToday(db, ids, instance) {
+  const today = todaySP();
+  const insert = db.prepare(`
+    INSERT OR IGNORE INTO Dispatched_Today (ImovelID, Instance, Reserved_At)
+    VALUES (?, ?, ?)
+  `);
+  const reserved = [];
+  for (const id of ids) {
+    const result = insert.run(id, instance, today);
+    if (result.changes > 0) reserved.push(id);
+  }
+  return reserved;
+}
+
+/**
+ * Registra os IDs enviados no Dispatch_Cycle desta instância.
+ */
+function markAsSentInCycle(db, imovelIds, instance) {
+  const today = todaySP();
+  const stmt = db.prepare(`
+    INSERT OR IGNORE INTO Dispatch_Cycle (ImovelID, Instance, SentAt)
+    VALUES (?, ?, ?)
+  `);
+  for (const id of imovelIds) {
+    stmt.run(id, instance, today);
+  }
+}
+
+/**
+ * Busca até `limit` imóveis respeitando:
+ *   - Ciclo por instância (Dispatch_Cycle)
+ *   - Deduplicação diária entre instâncias (Dispatched_Today)
  */
 async function fetchAndReserveAnnouncements(limit = 14) {
   const today = todaySP();
@@ -53,98 +141,89 @@ async function fetchAndReserveAnnouncements(limit = 14) {
   } catch (err) {
     await persistence.log(
       "AUTO-SCHEDULER",
-      `Falha ao abrir database: ${err.message}`,
+      `Failed to open database: ${err.message}`,
     );
     return [];
   }
 
   try {
-    // ── Seleciona imóveis disponíveis ainda não reservados hoje ─────────────
-    // Filtra ImovelStatus = 'Disponível' para não disparar imóveis fora de carteira.
-    // Usa ImovelID (PK real) por consistência com o schema — não rowid.
+    // IDs já reservados hoje por qualquer instância
+    const takenToday = new Set(
+      db
+        .prepare("SELECT ImovelID FROM Dispatched_Today WHERE Reserved_At = ?")
+        .all(today)
+        .map((r) => r.ImovelID),
+    );
+
+    // IDs disponíveis no ciclo desta instância
+    const cycleAvailable = getAvailableForCycle(db, INSTANCE);
+
+    // Candidatos = no ciclo desta instância E não reservados hoje
+    const candidates = cycleAvailable.filter((id) => !takenToday.has(id));
+
+    if (candidates.length === 0) {
+      await persistence.log(
+        "AUTO-SCHEDULER",
+        `No candidates for ${INSTANCE} today — all cycle IDs already taken by other instances.`,
+      );
+      return [];
+    }
+
+    // Reserva os primeiros `limit` candidatos
+    const batch = candidates.slice(0, limit);
+    const reserved = reserveForToday(db, batch, INSTANCE);
+
+    // Complementa se houve corrida entre instâncias
+    if (reserved.length < limit) {
+      const reservedSet = new Set(reserved);
+      const remaining = candidates
+        .slice(limit)
+        .filter((id) => !reservedSet.has(id));
+      const missing = limit - reserved.length;
+      const complement = reserveForToday(
+        db,
+        remaining.slice(0, missing),
+        INSTANCE,
+      );
+      if (complement.length > 0) {
+        reserved.push(...complement);
+        await persistence.log(
+          "AUTO-SCHEDULER",
+          `Race condition: complemented with ${complement.length} extra ID(s).`,
+        );
+      }
+    }
+
+    if (reserved.length === 0) {
+      await persistence.log(
+        "AUTO-SCHEDULER",
+        "No properties reserved — all taken today.",
+      );
+      return [];
+    }
+
+    // Registra no ciclo desta instância
+    markAsSentInCycle(db, reserved, INSTANCE);
+
+    await persistence.log(
+      "AUTO-SCHEDULER",
+      `${reserved.length} property(ies) reserved for ${INSTANCE} (IDs: ${reserved.join(", ")})`,
+    );
+
+    // Busca dados completos
+    const placeholders = reserved.map(() => "?").join(",");
     const rows = db
       .prepare(
         `
       SELECT ImovelID, Descricao
       FROM   Imoveis
-      WHERE  ImovelStatus = 'Disponível'
-        AND  ImovelID NOT IN (
-               SELECT ImovelID
-               FROM   Dispatched_Today
-               WHERE  Reserved_At = ?
-             )
+      WHERE  ImovelID IN (${placeholders})
       ORDER BY ImovelID ASC
-      LIMIT ?
     `,
       )
-      .all(today, limit);
+      .all(...reserved);
 
-    if (rows.length === 0) {
-      await persistence.log(
-        "AUTO-SCHEDULER",
-        "Nenhum imóvel disponível no banco para hoje.",
-      );
-      return [];
-    }
-
-    // ── Reserva atômica via INSERT OR IGNORE ─────────────────────────────────
-    // Se dois processos tentarem o mesmo ImovelID no mesmo dia,
-    // a PRIMARY KEY rejeita o segundo silenciosamente (changes = 0).
-    const insert = db.prepare(`
-      INSERT OR IGNORE INTO Dispatched_Today (ImovelID, Instance, Reserved_At)
-      VALUES (?, ?, ?)
-    `);
-
-    const reserved = [];
-    for (const row of rows) {
-      const result = insert.run(row.ImovelID, INSTANCE, today);
-      if (result.changes > 0) {
-        reserved.push(row);
-      }
-    }
-
-    // ── Complementa se houve corrida entre instâncias ────────────────────────
-    if (reserved.length < rows.length) {
-      const missing = limit - reserved.length;
-      const takenIds = reserved.map((r) => r.ImovelID);
-      const placeholders =
-        takenIds.length > 0 ? takenIds.map(() => "?").join(",") : "NULL";
-
-      await persistence.log(
-        "AUTO-SCHEDULER",
-        `Corrida detectada: buscando ${missing} anúncio(s) complementar(es)…`,
-      );
-
-      const complement = db
-        .prepare(
-          `
-        SELECT ImovelID, Descricao
-        FROM   Imoveis
-        WHERE  ImovelStatus = 'Disponível'
-          AND  ImovelID NOT IN (
-                 SELECT ImovelID FROM Dispatched_Today WHERE Reserved_At = ?
-               )
-          AND  ImovelID NOT IN (${placeholders})
-        ORDER BY ImovelID ASC
-        LIMIT ?
-      `,
-        )
-        .all(today, ...takenIds, missing);
-
-      for (const row of complement) {
-        const result = insert.run(row.ImovelID, INSTANCE, today);
-        if (result.changes > 0) reserved.push(row);
-      }
-    }
-
-    await persistence.log(
-      "AUTO-SCHEDULER",
-      `${reserved.length} imóvel(is) reservado(s) para ${INSTANCE} ` +
-        `(IDs: ${reserved.map((r) => r.ImovelID).join(", ")})`,
-    );
-
-    // ── Constrói entradas no formato de state.todayQueue ─────────────────────
-    const entries = reserved.map((row, i) => {
+    return rows.map((row, i) => {
       const body = applyFormat(row.Descricao ?? "");
       const neighborhood = extractNeighborhood(body);
       const announcementCls = classifyNeighborhood(neighborhood);
@@ -161,15 +240,13 @@ async function fetchAndReserveAnnouncements(limit = 14) {
         neighborhood: neighborhood || "unidentified",
         class: announcementCls,
         targetGroups,
-        sourceImovelID: row.ImovelID, // rastreabilidade
+        sourceImovelID: row.ImovelID,
       };
     });
-
-    return entries;
   } catch (err) {
     await persistence.log(
       "AUTO-SCHEDULER",
-      `Erro ao buscar anúncios: ${err.message}`,
+      `Error fetching announcements: ${err.message}`,
     );
     return [];
   } finally {
@@ -178,8 +255,8 @@ async function fetchAndReserveAnnouncements(limit = 14) {
 }
 
 /**
- * Remove registros de dias anteriores da Dispatched_Today.
- * Chamado no início de cada autoFeedQueue para manter a tabela limpa.
+ * Remove entradas de dias anteriores da Dispatched_Today.
+ * O Dispatch_Cycle NÃO é limpo aqui — ele só reseta quando o ciclo se esgota.
  */
 async function pruneOldReservations() {
   const today = todaySP();
@@ -192,13 +269,13 @@ async function pruneOldReservations() {
     if (result.changes > 0) {
       await persistence.log(
         "AUTO-SCHEDULER",
-        `${result.changes} reserva(s) antiga(s) removida(s).`,
+        `${result.changes} old daily reservation(s) removed.`,
       );
     }
   } catch (err) {
     await persistence.log(
       "AUTO-SCHEDULER",
-      `Erro ao limpar reservas antigas: ${err.message}`,
+      `Error pruning old reservations: ${err.message}`,
     );
   } finally {
     db?.close();

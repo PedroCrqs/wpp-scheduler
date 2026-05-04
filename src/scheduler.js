@@ -1,12 +1,3 @@
-/**
- * scheduler.js
- *
- * Alterações em relação à versão original:
- *   - dailyReset agora chama autoFeedQueue() após zerar o estado,
- *     populando state.todayQueue automaticamente via SQLite.
- *   - Exporta autoFeedQueue para que client.js possa usá-la no boot.
- */
-
 const cron = require("node-cron");
 const state = require("./state");
 const persistence = require("./persistence");
@@ -15,7 +6,6 @@ const {
   pruneOldReservations,
 } = require("./auto-scheduler");
 
-// ─── Utilitário de hora em SP ────────────────────────────────────────────────
 function nowSP() {
   return new Date()
     .toLocaleString("en-US", {
@@ -28,7 +18,6 @@ function nowSP() {
     .trim();
 }
 
-// ─── Geração de schedule com jitter ─────────────────────────────────────────
 function generateSchedule() {
   const base = [
     { hour: 9, minute: 0 },
@@ -59,7 +48,6 @@ function nextScheduledTime() {
   return next || "None today (all passed)";
 }
 
-// ─── Agendamento dos slots via cron ─────────────────────────────────────────
 async function scheduleDispatches() {
   const { queueDispatch } = require("./dispatcher");
 
@@ -88,12 +76,6 @@ async function scheduleDispatches() {
   await persistence.log("CRON", `${state.SCHEDULE.length} slots scheduled ✓`);
 }
 
-// ─── Alimenta a fila automaticamente via SQLite ──────────────────────────────
-/**
- * Busca até 14 anúncios do banco e popula state.todayQueue.
- * Deve ser chamada após qualquer reset (diário ou manual).
- * Retorna o número de entradas carregadas.
- */
 async function autoFeedQueue() {
   await pruneOldReservations();
 
@@ -102,12 +84,11 @@ async function autoFeedQueue() {
   if (entries.length === 0) {
     await persistence.log(
       "AUTO-SCHEDULER",
-      "Fila não populada — banco sem anúncios disponíveis.",
+      "Queue is empty — no announcements available at the bank.",
     );
     return 0;
   }
 
-  // Reindexar caso haja menos de 14
   entries.forEach((e, i) => {
     e.index = i;
   });
@@ -118,13 +99,12 @@ async function autoFeedQueue() {
 
   await persistence.log(
     "AUTO-SCHEDULER",
-    `Fila populada com ${entries.length} anúncio(s) automaticamente.`,
+    `Queue populated with ${entries.length} ad(s) automatically.`,
   );
 
   return entries.length;
 }
 
-// ─── Reset diário ────────────────────────────────────────────────────────────
 async function dailyReset(reschedule = true) {
   await persistence.log("RESET", "Daily reset triggered");
 
@@ -134,7 +114,6 @@ async function dailyReset(reschedule = true) {
     state.resetCronInitialized = false;
   }
 
-  // Zera todo o estado volátil
   state.todayQueue = [];
   state.dispatchesDone = 0;
   state.processedMessages.clear();
@@ -142,7 +121,6 @@ async function dailyReset(reschedule = true) {
   state.dispatchRunning = false;
   state.watchdogScheduled = new Set();
 
-  // Novo schedule com jitter
   state.SCHEDULE = generateSchedule();
   const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
   state.scheduleDate = tomorrow.toLocaleDateString("en-CA", {
@@ -151,32 +129,22 @@ async function dailyReset(reschedule = true) {
 
   await persistence.saveSchedule();
 
-  // ── AUTO-FEED: popula a fila do banco ───────────────────────────────────
   const loaded = await autoFeedQueue();
-  // saveQueue já é chamado dentro de autoFeedQueue
 
   await persistence.log(
     "RESET",
-    `Queue cleared | New schedule: ${state.SCHEDULE.join(", ")} | ${loaded} anúncio(s) carregados do banco`,
+    `Queue cleared | New schedule: ${state.SCHEDULE.join(", ")} | ${loaded} ad(s) loaded from the bank`,
   );
 
   await scheduleDispatches();
 
-  try {
-    const myId = state.client.info.wid._serialized;
-    await state.client.sendMessage(
-      myId,
-      `🗑️ *Daily Reset Triggered!*\n\n` +
-        `📦 ${loaded} anúncio(s) carregados automaticamente do banco.`,
-    );
-  } catch {}
-
   if (reschedule) {
     initResetScheduler();
   }
+
+  return loaded;
 }
 
-// ─── Watchdog: dispara slots perdidos ───────────────────────────────────────
 async function checkMissedDispatches() {
   const { queueDispatch } = require("./dispatcher");
 
@@ -234,7 +202,6 @@ async function checkMissedDispatches() {
   });
 }
 
-// ─── Inicializa cron de reset diário ────────────────────────────────────────
 function initResetScheduler() {
   if (state.resetCronInitialized) return;
 
@@ -242,7 +209,16 @@ function initResetScheduler() {
     "0 0 * * *",
     async () => {
       await persistence.log("RESET", "Daily reset triggered by cron (00:00)");
-      await dailyReset();
+      const loaded = await dailyReset();
+      try {
+        const myId = state.client.info.wid._serialized;
+        await state.client.sendMessage(
+          myId,
+          `🗑️ *Daily Reset Triggered!*\n\n` +
+            `📦 ${loaded} ad(s) automatically loaded from the database.\n` +
+            `⏰ New schedule: ${state.SCHEDULE.join(", ")}`,
+        );
+      } catch {}
     },
     { timezone: "America/Sao_Paulo" },
   );
@@ -258,5 +234,5 @@ module.exports = {
   dailyReset,
   checkMissedDispatches,
   initResetScheduler,
-  autoFeedQueue, // exportado para uso no boot (client.js)
+  autoFeedQueue,
 };
