@@ -40,11 +40,26 @@ const client = new Client({
       "--disable-dev-shm-usage", // Usa /tmp em vez de /dev/shm (evita o "Target closed")
       "--disable-extensions",
       "--no-first-run",
+      "--disable-gpu",
+      "--disable-software-rasterizer",
     ],
   },
 });
 
 state.client = client;
+
+async function startBot() {
+  try {
+    await persistence.log("BOT", "Starting WhatsApp client...");
+    await client.initialize();
+  } catch (err) {
+    await persistence.log(
+      "ERROR",
+      `Initialization failed: ${err.message}. Retrying in 30s...`,
+    );
+    setTimeout(startBot(), 30000);
+  }
+}
 
 client.on("qr", (qr) => {
   console.log("\n══════════════════════════════════════════");
@@ -53,7 +68,7 @@ client.on("qr", (qr) => {
   qrcode.generate(qr, { small: true });
 });
 
-client.on("ready", async () => {
+client.once("ready", async () => {
   await persistence.log("BOT", "WhatsApp client ready ✓");
   state.myBsuid = ACCOUNTS[INSTANCE].myBsuid;
   console.log("BSUID:", state.myBsuid);
@@ -127,6 +142,7 @@ client.on("ready", async () => {
 
 client.on("auth_failure", (msg) => {
   persistence.log("ERROR", `Auth failure: ${msg}`);
+  setTimeout(startBot(), 30000);
 });
 
 client.on("disconnected", (reason) => {
@@ -227,4 +243,4 @@ client.on("message_create", async (msg) => {
   );
 });
 
-module.exports = { client };
+module.exports = { client, startBot };
