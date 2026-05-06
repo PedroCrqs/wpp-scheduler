@@ -162,15 +162,6 @@ async function dailyReset(reschedule = true) {
 
   await scheduleDispatches();
 
-  try {
-    const myId = state.client.info.wid._serialized;
-    await state.client.sendMessage(
-      myId,
-      `🗑️ *Daily Reset Triggered!*\n\n` +
-        `📦 ${loaded} anúncio(s) carregados automaticamente do banco.`,
-    );
-  } catch {}
-
   if (reschedule) {
     initResetScheduler();
   }
@@ -243,6 +234,14 @@ function initResetScheduler() {
     async () => {
       await persistence.log("RESET", "Daily reset triggered by cron (00:00)");
       await dailyReset();
+      try {
+        const myId = client.info.wid._serialized;
+        await client.sendMessage(
+          myId,
+          `🗑️ *Daily Reset Triggered!*\n\n` +
+            `📦 ${loaded} anúncio(s) carregados automaticamente do banco.`,
+        );
+      } catch {}
     },
     { timezone: "America/Sao_Paulo" },
   );
