@@ -9,7 +9,7 @@ const {
   scheduleDispatches,
   checkMissedDispatches,
   initResetScheduler,
-  autoFeedQueue, // ← novo
+  autoFeedQueue,
 } = require("./scheduler");
 const { queueDispatch } = require("./dispatcher");
 const {
@@ -58,20 +58,8 @@ async function startBot() {
       "ERROR",
       `Initialization failed: ${err.message}. Retrying in 30s...`,
     );
-    setTimeout(startBot(), 30000);
-  }
-}
-
-async function startBot() {
-  try {
-    await persistence.log("BOT", "Starting WhatsApp client...");
-    await client.initialize();
-  } catch (err) {
-    await persistence.log(
-      "ERROR",
-      `Initialization failed: ${err.message}. Retrying in 30s...`,
-    );
-    setTimeout(startBot(), 30000);
+    // NOTE: setTimeout receives the function reference, not its return value
+    setTimeout(startBot, 30000);
   }
 }
 
@@ -119,7 +107,10 @@ client.once("ready", async () => {
     `Queue: ${state.todayQueue.length} message(s) | ${state.dispatchesDone} already dispatched`,
   );
 
-  // ── AUTO-FEED no boot: se não há nada na fila, busca do banco ────────────
+  // Recover slots stuck in "sending" before checking queue emptiness
+  await persistence.recoverSendingSlots();
+
+  // Auto-feed on boot: if queue is still empty after recovery, fetch from DB
   if (state.todayQueue.length === 0) {
     await persistence.log(
       "BOT",
@@ -132,7 +123,6 @@ client.once("ready", async () => {
     );
   }
 
-  await persistence.recoverSendingSlots();
   await scheduleDispatches();
 
   if (!state.resetCronInitialized) {
@@ -147,7 +137,7 @@ client.once("ready", async () => {
 // ─── Eventos de sessão ───────────────────────────────────────────────────────
 client.on("auth_failure", (msg) => {
   persistence.log("ERROR", `Auth failure: ${msg}`);
-  setTimeout(startBot(), 30000);
+  setTimeout(startBot, 30000);
 });
 
 client.on("disconnected", (reason) => {
@@ -203,7 +193,7 @@ client.on("message_create", async (msg) => {
     return;
   }
 
-  // ── Entrada manual (fluxo original mantido mas obsoleto, sempre que ocorrer um reset a fila se autocarregará automaticamente) ───────────────────────────────
+  // ── Entrada manual (fluxo legado — substituído pelo auto-feed no boot/reset) ──
   const neighborhood = extractNeighborhood(msg.body);
   const announcementCls = classifyNeighborhood(neighborhood);
   const targetGroups = resolveGroups(announcementCls);
@@ -252,7 +242,5 @@ client.on("message_create", async (msg) => {
     `Msg ${state.todayQueue.length} | neighborhood: ${neighborhood} | class: ${announcementCls} | groups: ${targetGroups.length}`,
   );
 });
-
-// ── (Fim) Entrada manual (fluxo original mantido mas obsoleto, sempre que ocorrer um reset a fila se autocarregará automaticamente) ───────────────────────────────
 
 module.exports = { client, startBot };
