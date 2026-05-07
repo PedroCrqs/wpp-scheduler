@@ -6,6 +6,39 @@ Todas as alterações relevantes deste projeto serão documentadas neste arquivo
 Based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).  
 Baseado em [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [3.6.3] - 2026-05-07
+
+### Fixed
+
+- **`scheduleDate` set one day ahead on any reset trigger** _(scheduler.js)_
+  - Root cause: `dailyReset()` used `new Date(Date.now() + 24h)` to compute `scheduleDate`, resulting in tomorrow's date being stored regardless of when the reset was called.
+  - Since all three reset paths (midnight cron, `!reset` command, post-14th-dispatch) go through the same `dailyReset()`, all were affected.
+  - Consequence: `checkMissedDispatches` guards `state.scheduleDate !== todaySP` and returned immediately on every tick — the watchdog was silently disabled after any reset.
+  - Fix: replaced `tomorrow` with `new Date()`. At midnight the date is already the new day; for manual and post-dispatch resets the current date is always correct.
+
+- **Watchdog incorrectly flags new queue as overdue after late-day reset** _(scheduler.js)_
+  - Root cause: when `dailyReset()` is triggered after the 14th dispatch (typically 22h–23h), a new queue is loaded with slots starting at 09:00. The watchdog, still active, detects all 14 slots as overdue and schedules them for immediate/delayed dispatch.
+  - Fix: added an upper bound guard — `if (current >= "22:00") return` — alongside the existing `current < "09:00"` guard. The watchdog now operates only within the 09:00–22:00 dispatch window. Any overdue slot will have already been detected and scheduled before 22:00, so no recovery is lost.
+
+---
+
+### Corrigido
+
+- **`scheduleDate` definido com um dia à frente em qualquer trigger de reset** _(scheduler.js)_
+  - Causa raiz: `dailyReset()` usava `new Date(Date.now() + 24h)` para calcular `scheduleDate`, resultando na data de amanhã sendo armazenada independente do momento do reset.
+  - Como os três caminhos de reset (cron de meia-noite, comando `!reset`, pós-14º disparo) passam pelo mesmo `dailyReset()`, todos eram afetados.
+  - Consequência: o guard `state.scheduleDate !== todaySP` do `checkMissedDispatches` retornava imediatamente em cada tick — o watchdog ficava silenciosamente desabilitado após qualquer reset.
+  - Correção: substituído `tomorrow` por `new Date()`. À meia-noite a data já é o novo dia; para resets manuais e pós-disparo, a data corrente é sempre correta.
+
+- **Watchdog capturava nova fila como atrasada após reset no fim do dia** _(scheduler.js)_
+  - Causa raiz: quando `dailyReset()` é acionado após o 14º disparo (tipicamente entre 22h e 23h), uma nova fila é carregada com slots a partir das 09:00. O watchdog, ainda ativo, detectava todos os 14 slots como atrasados e os agendava para disparo imediato ou com delay.
+  - Correção: adicionado guard de limite superior — `if (current >= "22:00") return` — junto ao guard existente `current < "09:00"`. O watchdog agora opera apenas dentro da janela de despacho 09:00–22:00. Qualquer slot atrasado já terá sido detectado e agendado antes das 22:00, sem perda de recuperação.
+
+---
+
+> **Commit:** `fix(scheduler): fix scheduleDate off-by-one in dailyReset, add 22:00 upper bound to watchdog`  
+> **Tag:** `v3.6.3`
+
 ---
 
 ## [3.6.2] - 2026-04-27

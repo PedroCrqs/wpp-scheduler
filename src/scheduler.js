@@ -122,8 +122,7 @@ async function dailyReset(reschedule = true) {
   state.watchdogScheduled = new Set();
 
   state.SCHEDULE = generateSchedule();
-  const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
-  state.scheduleDate = tomorrow.toLocaleDateString("en-CA", {
+  state.scheduleDate = new Date().toLocaleDateString("en-CA", {
     timeZone: "America/Sao_Paulo",
   });
 
@@ -155,7 +154,7 @@ async function checkMissedDispatches() {
   const current = nowSP();
 
   if (!state.scheduleDate || state.scheduleDate !== todaySP) return;
-  if (current < "09:00") return;
+  if (current < "09:00" || current >= "22:00") return;
 
   state.SCHEDULE.forEach((time, index) => {
     if (time >= current) return;

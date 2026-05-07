@@ -128,32 +128,6 @@ client.on("ready", async () => {
   cron.schedule("* * * * *", checkMissedDispatches, {
     timezone: "America/Sao_Paulo",
   });
-
-  // Dispara slots que passaram enquanto o bot estava offline
-  const current = new Date()
-    .toLocaleString("en-US", {
-      timeZone: "America/Sao_Paulo",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    })
-    .replace(",", "")
-    .trim();
-
-  if (current >= "09:00") {
-    state.SCHEDULE.forEach((time, index) => {
-      if (time < current) {
-        const msg = state.todayQueue[index];
-        if (msg && msg.status === "waiting") {
-          persistence.log(
-            "BOT",
-            `Slot ${index + 1} (${time}) missed — firing now (bot was offline)`,
-          );
-          queueDispatch(index);
-        }
-      }
-    });
-  }
 });
 
 // ─── Eventos de sessão ───────────────────────────────────────────────────────
