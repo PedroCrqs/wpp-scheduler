@@ -136,7 +136,7 @@ async function executeDispatch(index) {
   } catch {}
 
   if (state.dispatchesDone === 14) {
-    await dailyReset(false);
+    const loaded = await dailyReset(false);
     try {
       const myId = client.info.wid._serialized;
       await client.sendMessage(
@@ -144,7 +144,12 @@ async function executeDispatch(index) {
         `🗑️ *Reset Triggered!*\n\n` +
           `📦 ${loaded} anúncio(s) carregados automaticamente do banco.`,
       );
-    } catch {}
+    } catch {
+      await persistence.log(
+        "ERROR",
+        `Post-reset message failed: ${err.message}`,
+      );
+    }
   }
 }
 
