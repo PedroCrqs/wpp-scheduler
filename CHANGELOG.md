@@ -6,6 +6,138 @@ Todas as alterações relevantes deste projeto serão documentadas neste arquivo
 Based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).  
 Baseado em [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [4.0.0] - 2026-05-05
+
+### Added
+
+- **`auto-scheduler.js` — new module for SQLite-driven queue auto-feed**
+  - `fetchAndReserveAnnouncements(limit)`: selects up to 14 available properties (`ImovelStatus = 'Disponível'`) from the external `imoveis.db` database, respecting two independent rules:
+    1. **Per-instance cycle** (`Dispatch_Cycle`): each instance cycles through all available properties before repeating any; cycle resets automatically when exhausted via `DELETE + re-query`
+    2. **Cross-instance daily deduplication** (`Dispatched_Today`): atomic reservation via `INSERT OR IGNORE` on PRIMARY KEY `(ImovelID, Reserved_At)` — no two instances send the same property on the same day
+  - `getAvailableForCycle(db, instance)`: queries properties not yet in `Dispatch_Cycle` for this instance; auto-resets cycle when all are exhausted
+  - `reserveForToday(db, ids, instance)`: atomic `INSERT OR IGNORE` into `Dispatched_Today`; returns only IDs where `changes > 0`
+  - `markAsSentInCycle(db, ids, instance)`: records sent IDs in `Dispatch_Cycle`
+  - `pruneOldReservations()`: cleans `Dispatched_Today` entries older than today; `Dispatch_Cycle` is never pruned externally
+  - Applies per-instance formatting: `mergeFormat` (account3), `mergeFormat2` (account1), raw (account2)
+  - Builds queue entries with full neighborhood/class/targetGroups resolution
+- **`helpers.js` — anti-ban utility module**
+  - `sleep(ms)`: Promise-based delay
+  - `shuffle(array)`: Fisher-Yates in-place shuffle (non-mutating via spread)
+  - `microVary(text)`: inserts a random invisible Unicode character (`\u200B`, `\u200C`, `\u200D`, `\uFEFF`) at a random position — makes each message fingerprint unique to reduce WhatsApp pattern detection
+  - `INVISIBLE_CHARS`: exported constant array for reference/testing
+- **`autoFeedQueue()` in `scheduler.js`**: orchestrates `pruneOldReservations` + `fetchAndReserveAnnouncements(14)`; reindexes entries; sets `state.todayQueue`, resets `dispatchesDone`, calls `saveQueue()`; returns loaded count; exported for `client.js` boot
+- **Boot auto-feed in `client.js`**: if `todayQueue` is empty after loading from disk on the `ready` event, `autoFeedQueue()` is called automatically before `scheduleDispatches()`
+- **Post-cycle auto-reset in `dispatcher.js`**: when `dispatchesDone === 14`, `dailyReset(false)` is called automatically — queue reloads from SQLite without requiring manual `!reset`; confirmation message sent to bot's own number with loaded count
+
+### Changed
+
+- **`dailyReset()` now returns loaded count** _(scheduler.js)_
+  - Return value used by `handleReset`, `initResetScheduler` cron, and `dispatcher.js` post-cycle handler to compose confirmation messages
+- **`checkMissedDispatches` upper bound added** _(scheduler.js)_
+  - Watchdog now exits early if `current >= "22:00"` — prevents firing overdue slots outside the dispatch window
+- **`handleReset` rewritten** _(commands.js)_
+  - Delegates entirely to `dailyReset(reschedule)` which now includes auto-feed internally
+  - Reply message reports loaded count from return value
+  - Duplicate `require('./scheduler')` inside function body removed
+- **`resolveGroups` deduplicates via `Set`** _(neighborhood.js)_
+  - `[...new Set([...GENERAL_GROUPS, ...eligible])]` prevents duplicate group IDs when a specific group appears in both general and specific lists
+- **`dispatcher.js` uses `shuffle` and `microVary` from `helpers.js`**
+  - Group send order randomized per dispatch via `shuffle(message.targetGroups || GENERAL_GROUPS)`
+  - Each message body varied with `microVary()` before sending
+
+### Fixed
+
+- **`initResetScheduler` cron had `loaded` undefined** _(scheduler.js)_
+  - `dailyReset()` now returns the loaded count; captured as `const loaded = await dailyReset()` inside the cron callback
+- **Stale patch comments removed from `commands.js`**
+  - Block comment with leftover patch instructions removed from source
+
+---
+
+### Adicionado
+
+- **`auto-scheduler.js` — novo módulo para auto-alimentação da fila via SQLite**
+  - `fetchAndReserveAnnouncements(limit)`: seleciona até 14 imóveis disponíveis (`ImovelStatus = 'Disponível'`) do banco externo `imoveis.db`, respeitando duas regras independentes:
+    1. **Ciclo por instância** (`Dispatch_Cycle`): cada instância percorre todos os imóveis antes de repetir; ciclo reseta automaticamente via `DELETE + re-query` quando esgotado
+    2. **Deduplicação diária entre instâncias** (`Dispatched_Today`): reserva atômica via `INSERT OR IGNORE` na PRIMARY KEY `(ImovelID, Reserved_At)` — nenhuma instância envia o mesmo imóvel no mesmo dia
+  - `getAvailableForCycle(db, instance)`: consulta imóveis ainda não enviados neste ciclo; reseta ciclo automaticamente ao esgotar
+  - `reserveForToday(db, ids, instance)`: `INSERT OR IGNORE` atômico em `Dispatched_Today`; retorna apenas IDs com `changes > 0`
+  - `markAsSentInCycle(db, ids, instance)`: registra IDs enviados no `Dispatch_Cycle`
+  - `pruneOldReservations()`: remove entradas antigas do `Dispatched_Today`; `Dispatch_Cycle` nunca é limpo externamente
+  - Aplica formatação por instância: `mergeFormat` (account3), `mergeFormat2` (account1), raw (account2)
+  - Constrói entradas da fila com resolução completa de bairro/classe/grupos
+- **`helpers.js` — módulo utilitário anti-ban**
+  - `sleep(ms)`: delay baseado em Promise
+  - `shuffle(array)`: Fisher-Yates sem mutação do original via spread
+  - `microVary(text)`: insere caractere Unicode invisível aleatório (`\u200B`, `\u200C`, `\u200D`, `\uFEFF`) em posição aleatória — torna o fingerprint de cada mensagem único para reduzir detecção de padrões pelo WhatsApp
+  - `INVISIBLE_CHARS`: array constante exportado para referência/testes
+- **`autoFeedQueue()` em `scheduler.js`**: orquestra `pruneOldReservations` + `fetchAndReserveAnnouncements(14)`; reindexar entradas; define `state.todayQueue`, zera `dispatchesDone`, chama `saveQueue()`; retorna o número de anúncios carregados; exportado para uso no boot do `client.js`
+- **Auto-feed no boot em `client.js`**: se `todayQueue` estiver vazia após carregar do disco no evento `ready`, `autoFeedQueue()` é chamado automaticamente antes de `scheduleDispatches()`
+- **Auto-reset pós-ciclo em `dispatcher.js`**: quando `dispatchesDone === 14`, `dailyReset(false)` é chamado automaticamente — fila recarrega do SQLite sem necessidade de `!reset` manual; mensagem de confirmação enviada para o próprio número do bot com o total carregado
+
+### Alterado
+
+- **`dailyReset()` agora retorna o número de anúncios carregados** _(scheduler.js)_
+  - Valor de retorno usado por `handleReset`, pelo cron do `initResetScheduler` e pelo handler pós-ciclo do `dispatcher.js` para compor mensagens de confirmação
+- **Upper bound adicionado ao `checkMissedDispatches`** _(scheduler.js)_
+  - Watchdog agora sai cedo se `current >= "22:00"` — evita disparo de slots atrasados fora da janela de despacho
+- **`handleReset` reescrito** _(commands.js)_
+  - Delega inteiramente ao `dailyReset(reschedule)`, que agora inclui auto-feed internamente
+  - Mensagem de reply reporta o total carregado via valor de retorno
+  - `require('./scheduler')` duplicado dentro do corpo da função removido
+- **`resolveGroups` deduplica via `Set`** _(neighborhood.js)_
+  - `[...new Set([...GENERAL_GROUPS, ...eligible])]` previne IDs de grupos duplicados quando um grupo aparece nas listas geral e específica simultaneamente
+- **`dispatcher.js` usa `shuffle` e `microVary` de `helpers.js`**
+  - Ordem de envio por grupo randomizada a cada disparo via `shuffle(message.targetGroups || GENERAL_GROUPS)`
+  - Corpo de cada mensagem variado com `microVary()` antes de enviar
+
+### Corrigido
+
+- **`loaded` indefinido no cron do `initResetScheduler`** _(scheduler.js)_
+  - `dailyReset()` agora retorna o total carregado; capturado como `const loaded = await dailyReset()` dentro do callback do cron
+- **Comentários de patch obsoletos removidos do `commands.js`**
+  - Bloco de comentário com instruções de patch remanescentes removido do código-fonte
+
+---
+
+> **Commit:** `feat(auto-scheduler): SQLite-driven queue auto-feed with per-instance cycle and cross-instance dedup [v4.0.0]`  
+> **Tag:** `v4.0.0`
+
+---
+
+## [3.6.3] - 2026-05-07
+
+### Fixed
+
+- **`scheduleDate` set one day ahead on any reset trigger** _(scheduler.js)_
+  - Root cause: `dailyReset()` used `new Date(Date.now() + 24h)` to compute `scheduleDate`, resulting in tomorrow's date being stored regardless of when the reset was called.
+  - Since all three reset paths (midnight cron, `!reset` command, post-14th-dispatch) go through the same `dailyReset()`, all were affected.
+  - Consequence: `checkMissedDispatches` guards `state.scheduleDate !== todaySP` and returned immediately on every tick — the watchdog was silently disabled after any reset.
+  - Fix: replaced `tomorrow` with `new Date()`. At midnight the date is already the new day; for manual and post-dispatch resets the current date is always correct.
+
+- **Watchdog incorrectly flags new queue as overdue after late-day reset** _(scheduler.js)_
+  - Root cause: when `dailyReset()` is triggered after the 14th dispatch (typically 22h–23h), a new queue is loaded with slots starting at 09:00. The watchdog, still active, detects all 14 slots as overdue and schedules them for immediate/delayed dispatch.
+  - Fix: added an upper bound guard — `if (current >= "22:00") return` — alongside the existing `current < "09:00"` guard. The watchdog now operates only within the 09:00–22:00 dispatch window. Any overdue slot will have already been detected and scheduled before 22:00, so no recovery is lost.
+
+---
+
+### Corrigido
+
+- **`scheduleDate` definido com um dia à frente em qualquer trigger de reset** _(scheduler.js)_
+  - Causa raiz: `dailyReset()` usava `new Date(Date.now() + 24h)` para calcular `scheduleDate`, resultando na data de amanhã sendo armazenada independente do momento do reset.
+  - Como os três caminhos de reset (cron de meia-noite, comando `!reset`, pós-14º disparo) passam pelo mesmo `dailyReset()`, todos eram afetados.
+  - Consequência: o guard `state.scheduleDate !== todaySP` do `checkMissedDispatches` retornava imediatamente em cada tick — o watchdog ficava silenciosamente desabilitado após qualquer reset.
+  - Correção: substituído `tomorrow` por `new Date()`. À meia-noite a data já é o novo dia; para resets manuais e pós-disparo, a data corrente é sempre correta.
+
+- **Watchdog capturava nova fila como atrasada após reset no fim do dia** _(scheduler.js)_
+  - Causa raiz: quando `dailyReset()` é acionado após o 14º disparo (tipicamente entre 22h e 23h), uma nova fila é carregada com slots a partir das 09:00. O watchdog, ainda ativo, detectava todos os 14 slots como atrasados e os agendava para disparo imediato ou com delay.
+  - Correção: adicionado guard de limite superior — `if (current >= "22:00") return` — junto ao guard existente `current < "09:00"`. O watchdog agora opera apenas dentro da janela de despacho 09:00–22:00. Qualquer slot atrasado já terá sido detectado e agendado antes das 22:00, sem perda de recuperação.
+
+---
+
+> **Commit:** `fix(scheduler): fix scheduleDate off-by-one in dailyReset, add 22:00 upper bound to watchdog`  
+> **Tag:** `v3.6.3`
+
 ---
 
 ## [3.6.3] - 2026-04-28

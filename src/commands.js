@@ -8,6 +8,16 @@ const {
 } = require("./scheduler");
 const { queueDispatch } = require("./dispatcher");
 
+async function handleReset(msg, reschedule = false) {
+  const loaded = await dailyReset(reschedule);
+
+  await msg.reply(
+    `🗑️ *Manual reset executed!*\n\n` +
+      `📦 ${loaded} ad(s) automatically loaded from the database.\n` +
+      `⏰ New schedule: ${state.SCHEDULE.join(", ")}`,
+  );
+}
+
 async function handleStatus(msg) {
   const status =
     `📊 *Bot Status*\n\n` +
@@ -19,7 +29,6 @@ async function handleStatus(msg) {
       .map((m, i) => `${i + 1}. [${m.status}] ${m.preview}`)
       .join("\n");
   await msg.reply(status);
-  return;
 }
 
 async function handleClear(msg) {
@@ -44,7 +53,6 @@ async function handleGroups(client, msg) {
     .map((g) => `• ${g.name}\n  ID: \`${g.id._serialized}\``)
     .join("\n\n");
   await msg.reply(`📋 *Available groups:*\n\n${list}`);
-  return;
 }
 
 async function handleFire(msg) {
@@ -91,7 +99,6 @@ async function handleFire(msg) {
     `Manual fire requested for slot ${targetIndex + 1}`,
   );
   queueDispatch(targetIndex);
-  return;
 }
 
 async function handleStopMidnightReset(msg) {
@@ -100,17 +107,6 @@ async function handleStopMidnightReset(msg) {
   state.resetCronInitialized = false;
   await msg.reply("🛑 Daily midnight reset stopped.");
   await persistence.log("COMMAND", "Midnight reset cron manually stopped");
-}
-
-async function handleReset(msg, reschedule) {
-  await dailyReset(reschedule);
-  if (reschedule) {
-    await msg.reply("🗑️ Manual reset with reschedule.");
-    await persistence.log("COMMAND", "Bot reset manually with reschedule");
-    return;
-  }
-  await msg.reply("🗑️ Manual reset.");
-  await persistence.log("COMMAND", "Bot reset manually");
 }
 
 module.exports = {

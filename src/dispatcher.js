@@ -134,10 +134,6 @@ async function executeDispatch(index) {
     initResetScheduler();
   }
 
-  if (state.dispatchesDone === 14) {
-    await dailyReset(false);
-  }
-
   try {
     const myId = client.info.wid._serialized;
     await client.sendMessage(
@@ -148,6 +144,23 @@ async function executeDispatch(index) {
         `📝 "${message.preview}"`,
     );
   } catch {}
+
+  if (state.dispatchesDone === 14) {
+    const loaded = await dailyReset(false);
+    try {
+      const myId = client.info.wid._serialized;
+      await client.sendMessage(
+        myId,
+        `🗑️ *Reset Triggered!*\n\n` +
+          `📦 ${loaded} anúncio(s) carregados automaticamente do banco.`,
+      );
+    } catch {
+      await persistence.log(
+        "ERROR",
+        `Post-reset message failed: ${err.message}`,
+      );
+    }
+  }
 }
 
 module.exports = { queueDispatch, processDispatchQueue, executeDispatch };

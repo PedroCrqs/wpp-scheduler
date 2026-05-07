@@ -9,6 +9,7 @@ const {
   scheduleDispatches,
   checkMissedDispatches,
   initResetScheduler,
+  autoFeedQueue, // ← novo
 } = require("./scheduler");
 const { queueDispatch } = require("./dispatcher");
 const {
@@ -37,7 +38,7 @@ const client = new Client({
     args: [
       "--no-sandbox",
       "--disable-setuid-sandbox",
-      "--disable-dev-shm-usage", // Usa /tmp em vez de /dev/shm (evita o "Target closed")
+      "--disable-dev-shm-usage",
       "--disable-extensions",
       "--no-first-run",
       "--disable-gpu",
@@ -47,6 +48,19 @@ const client = new Client({
 });
 
 state.client = client;
+
+async function startBot() {
+  try {
+    await persistence.log("BOT", "Starting WhatsApp client...");
+    await client.initialize();
+  } catch (err) {
+    await persistence.log(
+      "ERROR",
+      `Initialization failed: ${err.message}. Retrying in 30s...`,
+    );
+    setTimeout(startBot(), 30000);
+  }
+}
 
 async function startBot() {
   try {
@@ -73,11 +87,13 @@ client.once("ready", async () => {
   state.myBsuid = ACCOUNTS[INSTANCE].myBsuid;
   console.log("BSUID:", state.myBsuid);
 
+  // Carrega fila salva em disco
   state.todayQueue = persistence.loadQueue();
   state.dispatchesDone = state.todayQueue.filter(
     (m) => m.status === "sent",
   ).length;
 
+  // Carrega ou gera schedule
   const savedSchedule = persistence.loadSchedule();
   if (savedSchedule) {
     state.SCHEDULE = savedSchedule.slots;
@@ -103,6 +119,19 @@ client.once("ready", async () => {
     `Queue: ${state.todayQueue.length} message(s) | ${state.dispatchesDone} already dispatched`,
   );
 
+  // ── AUTO-FEED no boot: se não há nada na fila, busca do banco ────────────
+  if (state.todayQueue.length === 0) {
+    await persistence.log(
+      "BOT",
+      "Fila vazia no boot — iniciando auto-feed do banco…",
+    );
+    const loaded = await autoFeedQueue();
+    await persistence.log(
+      "BOT",
+      `Auto-feed no boot: ${loaded} anúncio(s) carregados.`,
+    );
+  }
+
   await persistence.recoverSendingSlots();
   await scheduleDispatches();
 
@@ -113,33 +142,9 @@ client.once("ready", async () => {
   cron.schedule("* * * * *", checkMissedDispatches, {
     timezone: "America/Sao_Paulo",
   });
-
-  const current = new Date()
-    .toLocaleString("en-US", {
-      timeZone: "America/Sao_Paulo",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    })
-    .replace(",", "")
-    .trim();
-
-  if (current >= "09:00") {
-    state.SCHEDULE.forEach((time, index) => {
-      if (time < current) {
-        const msg = state.todayQueue[index];
-        if (msg && msg.status === "waiting") {
-          persistence.log(
-            "BOT",
-            `Slot ${index + 1} (${time}) missed — firing now (bot was offline)`,
-          );
-          queueDispatch(index);
-        }
-      }
-    });
-  }
 });
 
+// ─── Eventos de sessão ───────────────────────────────────────────────────────
 client.on("auth_failure", (msg) => {
   persistence.log("ERROR", `Auth failure: ${msg}`);
   setTimeout(startBot(), 30000);
@@ -149,6 +154,7 @@ client.on("disconnected", (reason) => {
   persistence.log("WARN", `Disconnected: ${reason}`);
 });
 
+// ─── Recebimento de mensagens ────────────────────────────────────────────────
 client.on("message_create", async (msg) => {
   const myId = client.info.wid._serialized;
 
@@ -161,6 +167,7 @@ client.on("message_create", async (msg) => {
   if (state.processedMessages.has(msgId)) return;
   state.processedMessages.add(msgId);
 
+  // ── Comandos ──────────────────────────────────────────────────────────────
   if (msg.body === "!status") {
     await handleStatus(msg);
     return;
@@ -190,11 +197,13 @@ client.on("message_create", async (msg) => {
     return;
   }
 
+  // ── Limite de fila ────────────────────────────────────────────────────────
   if (state.todayQueue.length >= 14) {
     await msg.reply("⚠️ Queue is full (14/14). Send *!clear* to reset.");
     return;
   }
 
+  // ── Entrada manual (fluxo original mantido mas obsoleto, sempre que ocorrer um reset a fila se autocarregará automaticamente) ───────────────────────────────
   const neighborhood = extractNeighborhood(msg.body);
   const announcementCls = classifyNeighborhood(neighborhood);
   const targetGroups = resolveGroups(announcementCls);
@@ -214,7 +223,7 @@ client.on("message_create", async (msg) => {
     status: "waiting",
     neighborhood: neighborhood || "unidentified",
     class: announcementCls,
-    targetGroups: targetGroups,
+    targetGroups,
   };
 
   if (INSTANCE === "account3") {
@@ -237,10 +246,13 @@ client.on("message_create", async (msg) => {
       `📢 Target groups: *${targetGroups.length}*\n\n` +
       `⏰ Scheduled for *${scheduledTime}*`,
   );
+
   await persistence.log(
     "RECEIVED",
     `Msg ${state.todayQueue.length} | neighborhood: ${neighborhood} | class: ${announcementCls} | groups: ${targetGroups.length}`,
   );
 });
+
+// ── (Fim) Entrada manual (fluxo original mantido mas obsoleto, sempre que ocorrer um reset a fila se autocarregará automaticamente) ───────────────────────────────
 
 module.exports = { client, startBot };

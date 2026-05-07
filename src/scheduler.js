@@ -1,6 +1,10 @@
 const cron = require("node-cron");
 const state = require("./state");
 const persistence = require("./persistence");
+const {
+  fetchAndReserveAnnouncements,
+  pruneOldReservations,
+} = require("./auto-scheduler");
 
 function nowSP() {
   return new Date()
@@ -72,6 +76,35 @@ async function scheduleDispatches() {
   await persistence.log("CRON", `${state.SCHEDULE.length} slots scheduled ✓`);
 }
 
+async function autoFeedQueue() {
+  await pruneOldReservations();
+
+  const entries = await fetchAndReserveAnnouncements(14);
+
+  if (entries.length === 0) {
+    await persistence.log(
+      "AUTO-SCHEDULER",
+      "Queue is empty — no announcements available at the bank.",
+    );
+    return 0;
+  }
+
+  entries.forEach((e, i) => {
+    e.index = i;
+  });
+
+  state.todayQueue = entries;
+  state.dispatchesDone = 0;
+  await persistence.saveQueue();
+
+  await persistence.log(
+    "AUTO-SCHEDULER",
+    `Queue populated with ${entries.length} ad(s) automatically.`,
+  );
+
+  return entries.length;
+}
+
 async function dailyReset(reschedule = true) {
   await persistence.log("RESET", "Daily reset triggered");
 
@@ -86,28 +119,29 @@ async function dailyReset(reschedule = true) {
   state.processedMessages.clear();
   state.pendingDispatches = [];
   state.dispatchRunning = false;
-  state.SCHEDULE = generateSchedule();
   state.watchdogScheduled = new Set();
-  const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
-  state.scheduleDate = tomorrow.toLocaleDateString("en-CA", {
+
+  state.SCHEDULE = generateSchedule();
+  state.scheduleDate = new Date().toLocaleDateString("en-CA", {
     timeZone: "America/Sao_Paulo",
   });
+
   await persistence.saveSchedule();
-  await persistence.saveQueue();
+
+  const loaded = await autoFeedQueue();
+
   await persistence.log(
     "RESET",
-    `Queue and counters cleared | New schedule: ${state.SCHEDULE.join(", ")}`,
+    `Queue cleared | New schedule: ${state.SCHEDULE.join(", ")} | ${loaded} ad(s) loaded from the bank`,
   );
-  await scheduleDispatches();
 
-  try {
-    const myId = state.client.info.wid._serialized;
-    await state.client.sendMessage(myId, `🗑️ *Daily Reset Triggered!*\n\n`);
-  } catch {}
+  await scheduleDispatches();
 
   if (reschedule) {
     initResetScheduler();
   }
+
+  return loaded;
 }
 
 async function checkMissedDispatches() {
@@ -119,25 +153,19 @@ async function checkMissedDispatches() {
 
   const current = nowSP();
 
-  if (!state.scheduleDate || state.scheduleDate !== todaySP) {
-    return;
-  }
-  if (current < "09:00") return;
+  if (!state.scheduleDate || state.scheduleDate !== todaySP) return;
+  if (current < "09:00" || current >= "22:00") return;
 
   state.SCHEDULE.forEach((time, index) => {
     if (time >= current) return;
 
     const msg = state.todayQueue[index];
-
     if (!msg || msg.status !== "waiting") return;
-
     if (state.watchdogScheduled.has(index)) return;
 
     if (index > 0) {
       const prev = state.todayQueue[index - 1];
-      if (prev && prev.status !== "sent" && prev.status !== "error") {
-        return;
-      }
+      if (prev && prev.status !== "sent" && prev.status !== "error") return;
     }
 
     state.watchdogScheduled.add(index);
@@ -161,7 +189,6 @@ async function checkMissedDispatches() {
 
       setTimeout(() => {
         const currentMsg = state.todayQueue[index];
-
         if (currentMsg && currentMsg.status === "waiting") {
           persistence.log(
             "WATCHDOG",
@@ -178,10 +205,19 @@ function initResetScheduler() {
   if (state.resetCronInitialized) return;
 
   const task = cron.schedule(
-    "0 00 * * *",
+    "0 0 * * *",
     async () => {
       await persistence.log("RESET", "Daily reset triggered by cron (00:00)");
-      await dailyReset();
+      const loaded = await dailyReset();
+      try {
+        const myId = state.client.info.wid._serialized;
+        await state.client.sendMessage(
+          myId,
+          `🗑️ *Daily Reset Triggered!*\n\n` +
+            `📦 ${loaded} anúncio(s) carregados automaticamente do banco.` +
+            `⏰ New schedule: ${state.SCHEDULE.join(", ")}`,
+        );
+      } catch {}
     },
     { timezone: "America/Sao_Paulo" },
   );
@@ -197,4 +233,5 @@ module.exports = {
   dailyReset,
   checkMissedDispatches,
   initResetScheduler,
+  autoFeedQueue,
 };
