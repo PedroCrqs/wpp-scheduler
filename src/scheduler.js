@@ -4,6 +4,7 @@ const persistence = require("./persistence");
 const {
   fetchAndReserveAnnouncements,
   pruneOldReservations,
+  doBackup,
 } = require("./auto-scheduler");
 
 function nowSP() {
@@ -77,14 +78,17 @@ async function scheduleDispatches() {
 }
 
 async function autoFeedQueue() {
-  await pruneOldReservations();
+  // 1. Baixa o banco mais recente do Drive antes de qualquer leitura
+  await doBackup("download");
 
+  // 2. Limpa reservas antigas e busca novos anúncios
+  await pruneOldReservations();
   const entries = await fetchAndReserveAnnouncements(14);
 
   if (entries.length === 0) {
     await persistence.log(
       "AUTO-SCHEDULER",
-      "Queue is empty — no announcements available at the bank.",
+      "Queue is empty — no announcements available.",
     );
     return 0;
   }
@@ -99,8 +103,11 @@ async function autoFeedQueue() {
 
   await persistence.log(
     "AUTO-SCHEDULER",
-    `Queue populated with ${entries.length} ad(s) automatically.`,
+    `Queue populated with ${entries.length} ad(s).`,
   );
+
+  // 3. Sobe o banco após escrever Dispatched_Today e Dispatch_Cycle
+  await doBackup("upload");
 
   return entries.length;
 }
@@ -132,14 +139,12 @@ async function dailyReset(reschedule = true) {
 
   await persistence.log(
     "RESET",
-    `Queue cleared | New schedule: ${state.SCHEDULE.join(", ")} | ${loaded} ad(s) loaded from the bank`,
+    `Queue cleared | New schedule: ${state.SCHEDULE.join(", ")} | ${loaded} ad(s) loaded`,
   );
 
   await scheduleDispatches();
 
-  if (reschedule) {
-    initResetScheduler();
-  }
+  if (reschedule) initResetScheduler();
 
   return loaded;
 }
@@ -150,7 +155,6 @@ async function checkMissedDispatches() {
   const todaySP = new Date().toLocaleDateString("en-CA", {
     timeZone: "America/Sao_Paulo",
   });
-
   const current = nowSP();
 
   if (!state.scheduleDate || state.scheduleDate !== todaySP) return;
@@ -169,7 +173,6 @@ async function checkMissedDispatches() {
     }
 
     state.watchdogScheduled.add(index);
-
     const isFirstMissed = state.watchdogScheduled.size === 1;
 
     if (isFirstMissed) {
@@ -180,23 +183,23 @@ async function checkMissedDispatches() {
       queueDispatch(index);
     } else {
       const delayMinutes = Math.floor(Math.random() * 11) + 20;
-      const delayMs = delayMinutes * 60 * 1000;
-
       persistence.log(
         "WATCHDOG",
         `Slot ${index + 1} (${time}) overdue — scheduling in ${delayMinutes}min`,
       );
-
-      setTimeout(() => {
-        const currentMsg = state.todayQueue[index];
-        if (currentMsg && currentMsg.status === "waiting") {
-          persistence.log(
-            "WATCHDOG",
-            `Slot ${index + 1} (${time}) firing after delay`,
-          );
-          queueDispatch(index);
-        }
-      }, delayMs);
+      setTimeout(
+        () => {
+          const currentMsg = state.todayQueue[index];
+          if (currentMsg && currentMsg.status === "waiting") {
+            persistence.log(
+              "WATCHDOG",
+              `Slot ${index + 1} (${time}) firing after delay`,
+            );
+            queueDispatch(index);
+          }
+        },
+        delayMinutes * 60 * 1000,
+      );
     }
   });
 }
@@ -214,7 +217,7 @@ function initResetScheduler() {
         await state.client.sendMessage(
           myId,
           `🗑️ *Daily Reset Triggered!*\n\n` +
-            `📦 ${loaded} anúncio(s) carregados automaticamente do banco.` +
+            `📦 ${loaded} anúncio(s) carregados automaticamente do banco.\n` +
             `⏰ New schedule: ${state.SCHEDULE.join(", ")}`,
         );
       } catch {}

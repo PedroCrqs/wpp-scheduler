@@ -11,7 +11,7 @@
  *      todos os imóveis disponíveis já tiverem sido enviados por ela
  *      ao menos uma vez (Dispatch_Cycle rastreia o progresso do ciclo).
  *
- * Tabelas necessárias (schema.sql + migration):
+ * Tabelas necessárias (schema.sql):
  *
  *   Dispatched_Today — deduplicação diária entre instâncias
  *     ImovelID    INTEGER  PK parcial (com Reserved_At)
@@ -24,6 +24,7 @@
  *     SentAt      TEXT     YYYY-MM-DD
  */
 
+const { copyFile } = require("fs/promises");
 const { DatabaseSync } = require("node:sqlite");
 const {
   extractNeighborhood,
@@ -36,6 +37,7 @@ const persistence = require("./persistence");
 
 const DB_PATH =
   "/home/pedrocrqs/main-project-database/imoveis-database/data/imoveis.db";
+const DRIVE_PATH = "/home/pedrocrqs/majesto-drive/imoveis.db";
 
 function todaySP() {
   return new Date().toLocaleDateString("en-CA", {
@@ -49,10 +51,35 @@ function applyFormat(body) {
   return body;
 }
 
+// ─── Backup ───────────────────────────────────────────────────────────────────
+
 /**
- * Retorna IDs disponíveis para esta instância no ciclo atual.
- * Se o ciclo estiver esgotado, reseta e recomeça do zero.
+ * Sincroniza o banco com o Drive.
+ *   "download" — Drive → local  (antes de ler dados)
+ *   "upload"   — local → Drive  (após escrever dados)
+ *
+ * Usa fs/promises.copyFile que retorna uma Promise real,
+ * garantindo que o await em autoFeedQueue bloqueie corretamente.
  */
+async function doBackup(direction) {
+  try {
+    if (direction === "download") {
+      await copyFile(DRIVE_PATH, DB_PATH);
+      await persistence.log("BACKUP", "Drive → local sync complete.");
+    } else if (direction === "upload") {
+      await copyFile(DB_PATH, DRIVE_PATH);
+      await persistence.log("BACKUP", "Local → Drive sync complete.");
+    }
+  } catch (err) {
+    await persistence.log(
+      "BACKUP",
+      `Sync failed (${direction}): ${err.message}`,
+    );
+  }
+}
+
+// ─── Ciclo por instância ──────────────────────────────────────────────────────
+
 function getAvailableForCycle(db, instance) {
   const available = db
     .prepare(
@@ -61,44 +88,33 @@ function getAvailableForCycle(db, instance) {
     FROM   Imoveis
     WHERE  ImovelStatus = 'Disponível'
       AND  ImovelID NOT IN (
-             SELECT ImovelID
-             FROM   Dispatch_Cycle
-             WHERE  Instance = ?
+             SELECT ImovelID FROM Dispatch_Cycle WHERE Instance = ?
            )
     ORDER BY ImovelID ASC
   `,
     )
     .all(instance);
 
-  if (available.length > 0) {
-    return available.map((r) => r.ImovelID);
-  }
+  if (available.length > 0) return available.map((r) => r.ImovelID);
 
-  // Ciclo esgotado — reseta esta instância
   db.prepare("DELETE FROM Dispatch_Cycle WHERE Instance = ?").run(instance);
-
   persistence.log(
     "AUTO-SCHEDULER",
-    `Cycle completed for ${instance} — resetting and starting over.`,
+    `Cycle completed for ${instance} — resetting.`,
   );
 
   return db
     .prepare(
       `
-    SELECT ImovelID
-    FROM   Imoveis
-    WHERE  ImovelStatus = 'Disponível'
-    ORDER BY ImovelID ASC
+    SELECT ImovelID FROM Imoveis WHERE ImovelStatus = 'Disponível' ORDER BY ImovelID ASC
   `,
     )
     .all()
     .map((r) => r.ImovelID);
 }
 
-/**
- * Tenta reservar IDs na Dispatched_Today para hoje.
- * Retorna apenas os IDs efetivamente reservados (INSERT changes > 0).
- */
+// ─── Reserva diária ───────────────────────────────────────────────────────────
+
 function reserveForToday(db, ids, instance) {
   const today = todaySP();
   const insert = db.prepare(`
@@ -113,25 +129,16 @@ function reserveForToday(db, ids, instance) {
   return reserved;
 }
 
-/**
- * Registra os IDs enviados no Dispatch_Cycle desta instância.
- */
 function markAsSentInCycle(db, imovelIds, instance) {
   const today = todaySP();
   const stmt = db.prepare(`
-    INSERT OR IGNORE INTO Dispatch_Cycle (ImovelID, Instance, SentAt)
-    VALUES (?, ?, ?)
+    INSERT OR IGNORE INTO Dispatch_Cycle (ImovelID, Instance, SentAt) VALUES (?, ?, ?)
   `);
-  for (const id of imovelIds) {
-    stmt.run(id, instance, today);
-  }
+  for (const id of imovelIds) stmt.run(id, instance, today);
 }
 
-/**
- * Busca até `limit` imóveis respeitando:
- *   - Ciclo por instância (Dispatch_Cycle)
- *   - Deduplicação diária entre instâncias (Dispatched_Today)
- */
+// ─── Feed principal ───────────────────────────────────────────────────────────
+
 async function fetchAndReserveAnnouncements(limit = 14) {
   const today = todaySP();
   let db;
@@ -147,7 +154,6 @@ async function fetchAndReserveAnnouncements(limit = 14) {
   }
 
   try {
-    // IDs já reservados hoje por qualquer instância
     const takenToday = new Set(
       db
         .prepare("SELECT ImovelID FROM Dispatched_Today WHERE Reserved_At = ?")
@@ -155,23 +161,18 @@ async function fetchAndReserveAnnouncements(limit = 14) {
         .map((r) => r.ImovelID),
     );
 
-    // IDs disponíveis no ciclo desta instância
     const cycleAvailable = getAvailableForCycle(db, INSTANCE);
-
-    // Candidatos = no ciclo desta instância E não reservados hoje
     const candidates = cycleAvailable.filter((id) => !takenToday.has(id));
 
     if (candidates.length === 0) {
       await persistence.log(
         "AUTO-SCHEDULER",
-        `No candidates for ${INSTANCE} today — all cycle IDs already taken by other instances.`,
+        `No candidates for ${INSTANCE} today.`,
       );
       return [];
     }
 
-    // Reserva os primeiros `limit` candidatos
-    const batch = candidates.slice(0, limit);
-    const reserved = reserveForToday(db, batch, INSTANCE);
+    const reserved = reserveForToday(db, candidates.slice(0, limit), INSTANCE);
 
     // Complementa se houve corrida entre instâncias
     if (reserved.length < limit) {
@@ -179,17 +180,16 @@ async function fetchAndReserveAnnouncements(limit = 14) {
       const remaining = candidates
         .slice(limit)
         .filter((id) => !reservedSet.has(id));
-      const missing = limit - reserved.length;
       const complement = reserveForToday(
         db,
-        remaining.slice(0, missing),
+        remaining.slice(0, limit - reserved.length),
         INSTANCE,
       );
       if (complement.length > 0) {
         reserved.push(...complement);
         await persistence.log(
           "AUTO-SCHEDULER",
-          `Race condition: complemented with ${complement.length} extra ID(s).`,
+          `Race condition: +${complement.length} complemented.`,
         );
       }
     }
@@ -202,7 +202,6 @@ async function fetchAndReserveAnnouncements(limit = 14) {
       return [];
     }
 
-    // Registra no ciclo desta instância
     markAsSentInCycle(db, reserved, INSTANCE);
 
     await persistence.log(
@@ -210,15 +209,12 @@ async function fetchAndReserveAnnouncements(limit = 14) {
       `${reserved.length} property(ies) reserved for ${INSTANCE} (IDs: ${reserved.join(", ")})`,
     );
 
-    // Busca dados completos
     const placeholders = reserved.map(() => "?").join(",");
     const rows = db
       .prepare(
         `
-      SELECT ImovelID, Descricao
-      FROM   Imoveis
-      WHERE  ImovelID IN (${placeholders})
-      ORDER BY ImovelID ASC
+      SELECT ImovelID, Descricao FROM Imoveis
+      WHERE ImovelID IN (${placeholders}) ORDER BY ImovelID ASC
     `,
       )
       .all(...reserved);
@@ -254,10 +250,8 @@ async function fetchAndReserveAnnouncements(limit = 14) {
   }
 }
 
-/**
- * Remove entradas de dias anteriores da Dispatched_Today.
- * O Dispatch_Cycle NÃO é limpo aqui — ele só reseta quando o ciclo se esgota.
- */
+// ─── Limpeza ──────────────────────────────────────────────────────────────────
+
 async function pruneOldReservations() {
   const today = todaySP();
   let db;
@@ -269,17 +263,21 @@ async function pruneOldReservations() {
     if (result.changes > 0) {
       await persistence.log(
         "AUTO-SCHEDULER",
-        `${result.changes} old daily reservation(s) removed.`,
+        `${result.changes} old reservation(s) removed.`,
       );
     }
   } catch (err) {
     await persistence.log(
       "AUTO-SCHEDULER",
-      `Error pruning old reservations: ${err.message}`,
+      `Error pruning reservations: ${err.message}`,
     );
   } finally {
     db?.close();
   }
 }
 
-module.exports = { fetchAndReserveAnnouncements, pruneOldReservations };
+module.exports = {
+  fetchAndReserveAnnouncements,
+  pruneOldReservations,
+  doBackup,
+};
