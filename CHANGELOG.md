@@ -6,6 +6,40 @@ Todas as alterações relevantes deste projeto serão documentadas neste arquivo
 Based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).  
 Baseado em [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [4.0.2] - 2026-05-11
+
+### Fixed
+
+### Fixed
+
+- **`autoFeedQueue` was altering the database but not backing it up to the drive. When making changes to the .db remotely, all control over the firing order was lost.** _(auto-scheduler.js)_
+
+- Without backing up, all control over the firing order was lost.
+
+- **The function `doBackup(direction)` aligns with the database backup flow so that remote work is possible.** _(client.js)_
+
+- `doBackup("download")` downloads the changes made remotely.
+
+- `doBackup("upload")` saves the changes made locally to the remote drive.
+
+---
+
+### Corrigido
+
+- **`autoFeedQueue` alterava a database mas não fazia o backup para o drive. Ao fazer alterações na .db remotamente, todo o controle de disparos era perdido** _(auto-scheduler.js)_
+  - sem fazer backupt, todo o controle sobre a ordem de disparos era perdido
+
+- **Função `doBackup(direction)` se alinha ao fluxo de backup da database para que o trabalho remoto seja possível** _(client.js)_
+  - `doBackup("donwload")` baixa as alterações feitas remotamente.
+  - `doBackup("upload")` salva as alterações feitas localmente no drive remoto.
+
+---
+
+> **Commit:** `fix(auto-scheduler, scheduler): database backup system added [v4.0.2]`
+> **Tag:** `v4.0.2`
+
+---
+
 ## [4.0.1] - 2026-05-07
 
 ### Fixed
