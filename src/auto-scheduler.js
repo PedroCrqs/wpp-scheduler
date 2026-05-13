@@ -24,7 +24,7 @@
  *     SentAt      TEXT     YYYY-MM-DD
  */
 
-const { copyFile } = require("fs/promises");
+const { copyFile, open, unlink } = require("fs/promises");
 const { DatabaseSync } = require("node:sqlite");
 const {
   extractNeighborhood,
@@ -38,6 +38,11 @@ const persistence = require("./persistence");
 const DB_PATH =
   "/home/pedrocrqs/main-project-database/imoveis-database/data/imoveis.db";
 const DRIVE_PATH = "/home/pedrocrqs/majesto-drive/imoveis.db";
+
+// Lock file no mesmo diretório do Drive para coordenar instâncias concorrentes.
+// Qualquer instância que queira executar autoFeedQueue deve adquirir este lock primeiro.
+const LOCK_PATH = "/home/pedrocrqs/majesto-drive/.autoqueue.lock";
+const LOCK_TIMEOUT_MS = 60_000; // abandona se outra instância travar por mais de 60s
 
 function todaySP() {
   return new Date().toLocaleDateString("en-CA", {
@@ -57,9 +62,6 @@ function applyFormat(body) {
  * Sincroniza o banco com o Drive.
  *   "download" — Drive → local  (antes de ler dados)
  *   "upload"   — local → Drive  (após escrever dados)
- *
- * Usa fs/promises.copyFile que retorna uma Promise real,
- * garantindo que o await em autoFeedQueue bloqueie corretamente.
  */
 async function doBackup(direction) {
   try {
@@ -75,6 +77,60 @@ async function doBackup(direction) {
       "BACKUP",
       `Sync failed (${direction}): ${err.message}`,
     );
+  }
+}
+
+// ─── Lock distribuído (arquivo no Drive) ─────────────────────────────────────
+
+/**
+ * Tenta adquirir o lock de exclusão mútua no Drive.
+ *
+ * Usa "wx" (write + exclusive) — falha atomicamente se o arquivo já existir.
+ * Se o lock existir mas for mais antigo que LOCK_TIMEOUT_MS, considera travado
+ * e o remove antes de tentar novamente.
+ *
+ * Retorna true se adquiriu o lock, false se outra instância está executando.
+ */
+async function acquireLock() {
+  try {
+    const fh = await open(LOCK_PATH, "wx");
+    await fh.writeFile(JSON.stringify({ instance: INSTANCE, at: Date.now() }));
+    await fh.close();
+    return true;
+  } catch (err) {
+    if (err.code !== "EEXIST") {
+      await persistence.log("LOCK", `Unexpected lock error: ${err.message}`);
+      return false;
+    }
+
+    // Lock existe — verifica se está travado (instância morreu sem liberar)
+    try {
+      const fh = await open(LOCK_PATH, "r");
+      const content = await fh.readFile("utf8");
+      await fh.close();
+      const { at } = JSON.parse(content);
+      if (Date.now() - at > LOCK_TIMEOUT_MS) {
+        await persistence.log(
+          "LOCK",
+          `Stale lock detected (>${LOCK_TIMEOUT_MS}ms) — forcibly releasing.`,
+        );
+        await unlink(LOCK_PATH);
+        return acquireLock(); // tenta novamente
+      }
+    } catch {
+      // arquivo sumiu entre o open e o readFile — tenta adquirir de novo
+      return acquireLock();
+    }
+
+    return false;
+  }
+}
+
+async function releaseLock() {
+  try {
+    await unlink(LOCK_PATH);
+  } catch (err) {
+    await persistence.log("LOCK", `Failed to release lock: ${err.message}`);
   }
 }
 
@@ -129,12 +185,42 @@ function reserveForToday(db, ids, instance) {
   return reserved;
 }
 
-function markAsSentInCycle(db, imovelIds, instance) {
-  const today = todaySP();
-  const stmt = db.prepare(`
-    INSERT OR IGNORE INTO Dispatch_Cycle (ImovelID, Instance, SentAt) VALUES (?, ?, ?)
-  `);
-  for (const id of imovelIds) stmt.run(id, instance, today);
+/**
+ * Registra os imóveis no ciclo da instância.
+ *
+ * IMPORTANTE: deve ser chamada pelo dispatcher APÓS confirmação de envio,
+ * não no momento da reserva — evita queimar imóveis do ciclo em caso de
+ * falha entre reserva e despacho real.
+ *
+ * Abre e fecha o próprio banco para poder ser chamada de fora deste módulo
+ * (ex: dispatcher.js), após o upload ter sido feito pelo autoFeedQueue.
+ * Por isso usa doBackup internamente para manter Drive sincronizado.
+ */
+async function markAsSentInCycle(imovelIds, instance) {
+  let db;
+  try {
+    await doBackup("download");
+    db = new DatabaseSync(DB_PATH);
+    const today = todaySP();
+    const stmt = db.prepare(`
+      INSERT OR IGNORE INTO Dispatch_Cycle (ImovelID, Instance, SentAt) VALUES (?, ?, ?)
+    `);
+    for (const id of imovelIds) stmt.run(id, instance, today);
+    db.close();
+    db = null;
+    await doBackup("upload");
+    await persistence.log(
+      "AUTO-SCHEDULER",
+      `Cycle marked for IDs [${imovelIds.join(", ")}] (${instance})`,
+    );
+  } catch (err) {
+    await persistence.log(
+      "AUTO-SCHEDULER",
+      `markAsSentInCycle error: ${err.message}`,
+    );
+  } finally {
+    db?.close();
+  }
 }
 
 // ─── Feed principal ───────────────────────────────────────────────────────────
@@ -202,7 +288,7 @@ async function fetchAndReserveAnnouncements(limit = 14) {
       return [];
     }
 
-    markAsSentInCycle(db, reserved, INSTANCE);
+    // NÃO marca o ciclo aqui — isso é feito pelo dispatcher após envio confirmado.
 
     await persistence.log(
       "AUTO-SCHEDULER",
@@ -279,5 +365,8 @@ async function pruneOldReservations() {
 module.exports = {
   fetchAndReserveAnnouncements,
   pruneOldReservations,
+  markAsSentInCycle,
   doBackup,
+  acquireLock,
+  releaseLock,
 };

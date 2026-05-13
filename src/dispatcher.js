@@ -3,6 +3,8 @@ const { GENERAL_GROUPS } = require("./config");
 const { sleep, shuffle, microVary } = require("./helpers");
 const persistence = require("./persistence");
 const { dailyReset, initResetScheduler } = require("./scheduler");
+const { markAsSentInCycle } = require("./auto-scheduler");
+const { INSTANCE } = require("./config");
 
 function queueDispatch(index) {
   state.pendingDispatches.push(index);
@@ -118,8 +120,9 @@ async function executeDispatch(index) {
     }
   }
 
-  state.todayQueue[index].status =
-    failures === targetGroups.length ? "error" : "sent";
+  const dispatched = failures < targetGroups.length;
+
+  state.todayQueue[index].status = dispatched ? "sent" : "error";
   state.todayQueue[index].dispatchedAt = new Date().toISOString();
   state.todayQueue[index].result = { successes, failures };
   state.dispatchesDone++;
@@ -129,6 +132,12 @@ async function executeDispatch(index) {
     "DISPATCH",
     `Slot ${index + 1} done — ${successes} ok, ${failures} failed`,
   );
+
+  // Marca o imóvel no ciclo apenas após envio confirmado (ao menos parcial).
+  // Isso garante que falhas antes do envio não "queimem" o imóvel do ciclo.
+  if (dispatched && message.sourceImovelID != null) {
+    await markAsSentInCycle([message.sourceImovelID], INSTANCE);
+  }
 
   if (!state.resetCronInitialized) {
     initResetScheduler();
