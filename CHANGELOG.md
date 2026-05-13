@@ -6,6 +6,39 @@ Todas as alterações relevantes deste projeto serão documentadas neste arquivo
 Based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).  
 Baseado em [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [4.0.3] - 2026-05-12
+
+### Fixed
+
+- **Duplicate queue loaded by two instances after the 14th dispatch** _(auto-scheduler.js, scheduler.js)_
+  - Root cause: `autoFeedQueue()` started with `doBackup("download")`, which overwrote the local database with the Drive's state before any reservation was written. When two instances triggered `dailyReset()` near-simultaneously, both downloaded the same Drive state (no reservations yet), ran `fetchAndReserveAnnouncements()` independently against their own local copies, and each reserved the same 14 properties. The second instance's `doBackup("upload")` then overwrote the first instance's reservations, leaving `Dispatched_Today` in an inconsistent state. The `INSERT OR IGNORE` guard on `Dispatched_Today` was never reached because both instances wrote to separate local databases before either uploaded.
+  - Fix: introduced a **distributed file lock** (`acquireLock` / `releaseLock`) in `auto-scheduler.js`. The lock file is created on the Drive path using `open(LOCK_PATH, "wx")` — an atomic exclusive-create syscall that the kernel guarantees cannot be won by two processes simultaneously. The second instance receives `EEXIST`, logs `Lock not acquired`, and returns `0` without loading any queue. The lock is always released in a `finally` block. Stale locks older than 60 seconds are forcibly removed.
+  - `acquireLock` and `releaseLock` exported from `auto-scheduler.js`; `autoFeedQueue` in `scheduler.js` wraps the entire feed cycle inside the lock.
+
+- **`markAsSentInCycle` called at reservation time instead of after confirmed dispatch** _(auto-scheduler.js, dispatcher.js)_
+  - Root cause: `markAsSentInCycle` was called inside `fetchAndReserveAnnouncements()`, immediately after `reserveForToday()`. If the process crashed or restarted between queue population and the actual WhatsApp send, the property was permanently consumed from `Dispatch_Cycle` without ever being sent — silently shortening the cycle over time.
+  - Fix: `markAsSentInCycle` removed from `fetchAndReserveAnnouncements()`. It is now called in `dispatcher.js` inside `executeDispatch()`, only after at least one group receives the message (`dispatched === true`). Properties that fail entirely (`"error"` status) are not marked in the cycle and will be candidates again in the next cycle reset. `markAsSentInCycle` now manages its own database connection and Drive sync (download → write → upload) so it can be called independently from `dispatcher.js`.
+
+---
+
+### Corrigido
+
+- **Fila duplicada carregada por duas instâncias após o 14º disparo** _(auto-scheduler.js, scheduler.js)_
+  - Causa raiz: `autoFeedQueue()` iniciava com `doBackup("download")`, sobrescrevendo o banco local com o estado do Drive antes de qualquer reserva ser gravada. Quando duas instâncias disparavam `dailyReset()` quase simultaneamente, ambas baixavam o mesmo estado do Drive (sem reservas), executavam `fetchAndReserveAnnouncements()` de forma independente em seus bancos locais separados e reservavam os mesmos 14 imóveis. O `doBackup("upload")` da segunda instância sobrescrevia as reservas da primeira, deixando o `Dispatched_Today` em estado inconsistente. O guard `INSERT OR IGNORE` do `Dispatched_Today` nunca era atingido pois ambas gravavam em bancos locais distintos antes de qualquer upload.
+  - Correção: introduzido **lock distribuído por arquivo** (`acquireLock` / `releaseLock`) em `auto-scheduler.js`. O arquivo de lock é criado no caminho do Drive via `open(LOCK_PATH, "wx")` — chamada de sistema de criação exclusiva atômica que o kernel garante não poder ser vencida por dois processos simultaneamente. A segunda instância recebe `EEXIST`, loga `Lock not acquired` e retorna `0` sem carregar fila alguma. O lock é sempre liberado no bloco `finally`. Locks órfãos com mais de 60 segundos são removidos forçadamente.
+  - `acquireLock` e `releaseLock` exportados de `auto-scheduler.js`; `autoFeedQueue` em `scheduler.js` envolve todo o ciclo de alimentação dentro do lock.
+
+- **`markAsSentInCycle` chamado no momento da reserva em vez de após envio confirmado** _(auto-scheduler.js, dispatcher.js)_
+  - Causa raiz: `markAsSentInCycle` era chamado dentro de `fetchAndReserveAnnouncements()`, imediatamente após `reserveForToday()`. Se o processo travasse ou reiniciasse entre a população da fila e o envio real pelo WhatsApp, o imóvel era consumido permanentemente do `Dispatch_Cycle` sem ter sido enviado — encurtando o ciclo silenciosamente ao longo do tempo.
+  - Correção: `markAsSentInCycle` removido de `fetchAndReserveAnnouncements()`. Agora é chamado em `dispatcher.js` dentro de `executeDispatch()`, apenas após ao menos um grupo receber a mensagem (`dispatched === true`). Imóveis que falham completamente (status `"error"`) não são marcados no ciclo e voltam a ser candidatos no próximo reset de ciclo. `markAsSentInCycle` agora gerencia sua própria conexão com o banco e sincronização com o Drive (download → escrita → upload) para poder ser chamado de forma independente pelo `dispatcher.js`.
+
+---
+
+> **Commit:** `fix(auto-scheduler,scheduler,dispatcher): distributed file lock for autoFeedQueue, markAsSentInCycle moved to post-dispatch [v4.0.3]`  
+> **Tag:** `v4.0.3`
+
+---
+
 ## [4.0.2] - 2026-05-11
 
 ### Fixed
