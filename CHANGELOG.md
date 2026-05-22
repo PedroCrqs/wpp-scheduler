@@ -6,6 +6,41 @@ Todas as alterações relevantes deste projeto serão documentadas neste arquivo
 Based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).  
 Baseado em [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [4.0.4] - 2026-05-22
+
+### Added
+
+- **`!clearReservations` command — clear today's `Dispatched_Today` entries** _(auto-scheduler.js, commands.js)_
+  - New command that clears all `Dispatched_Today` reservations for the current day, making those properties available for reservation again on the next `autoFeedQueue` run. Does not affect the current queue or trigger a reload.
+  - `clearTodayReservations()` created in `auto-scheduler.js`: deletes rows scoped to `Reserved_At = today`, wrapped in `doBackup("download")` → deletion → `doBackup("upload")` to ensure the Drive reflects the cleanup before the next `autoFeedQueue` runs. `handleResetReservedToday` added to `commands.js` and wired to the `!clearReservations` message handler in `client.js`. `clearTodayReservations` exported from `auto-scheduler.js`.
+
+### Fixed
+
+- **Watchdog never fired overdue slots after restart** _(scheduler.js)_
+  - Root cause: `checkMissedDispatches` guarded `state.scheduleDate !== todaySP`, which evaluated to `true` and caused an early return whenever the bot restarted mid-day and the persisted `scheduleDate` did not match the current date in memory — even though the schedule itself was valid and all slots were overdue.
+  - Fix: the `scheduleDate !== todaySP` condition removed. The guard now only checks for `!state.scheduleDate`, preserving the intent of skipping execution when no schedule has been initialized without blocking legitimate mid-day restarts.
+
+---
+
+### Adicionado
+
+- **Comando `!clearReservations` — limpa as entradas de `Dispatched_Today` do dia** _(auto-scheduler.js, commands.js)_
+  - Novo comando que limpa todas as reservas de `Dispatched_Today` do dia corrente, tornando esses imóveis disponíveis para reserva na próxima execução do `autoFeedQueue`. Não afeta a fila atual nem dispara um recarregamento.
+  - Criada função `clearTodayReservations()` em `auto-scheduler.js`: deleta registros com `Reserved_At = today`, envolvida por `doBackup("download")` → deleção → `doBackup("upload")` para garantir que o Drive reflita a limpeza antes do próximo `autoFeedQueue`. `handleResetReservedToday` adicionado ao `commands.js` e conectado ao handler de mensagens `!clearReservations` no `client.js`. `clearTodayReservations` exportado de `auto-scheduler.js`.
+
+### Corrigido
+
+- **Watchdog nunca disparava slots atrasados após restart** _(scheduler.js)_
+  - Causa raiz: `checkMissedDispatches` verificava `state.scheduleDate !== todaySP`, o que resultava em retorno antecipado sempre que o bot reiniciava durante o dia e o `scheduleDate` persistido não coincidia com a data atual em memória — mesmo que o schedule fosse válido e todos os slots estivessem atrasados.
+  - Correção: condição `scheduleDate !== todaySP` removida. O guard agora verifica apenas `!state.scheduleDate`, preservando a intenção de pular a execução quando nenhum schedule foi inicializado, sem bloquear restarts legítimos no meio do dia.
+
+---
+
+> **Commit:** `feat(commands,auto-scheduler): add !clearReservations command; fix(scheduler): remove scheduleDate guard blocking watchdog on restart [v4.0.4]`  
+> **Tag:** `v4.0.4`
+
+---
+
 ## [4.0.3] - 2026-05-12
 
 ### Fixed
