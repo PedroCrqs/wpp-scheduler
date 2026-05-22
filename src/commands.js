@@ -7,6 +7,7 @@ const {
   scheduleDispatches,
 } = require("./scheduler");
 const { queueDispatch } = require("./dispatcher");
+const { clearTodayReservations } = require("./auto-scheduler");
 
 async function handleReset(msg, reschedule = false) {
   const loaded = await dailyReset(reschedule);
@@ -109,6 +110,11 @@ async function handleStopMidnightReset(msg) {
   await persistence.log("COMMAND", "Midnight reset cron manually stopped");
 }
 
+async function handleResetReservedToday(msg) {
+  await clearTodayReservations();
+  await msg.reply("🗑️ Today reservations cleared successfully.");
+}
+
 module.exports = {
   handleClear,
   handleFire,
@@ -116,4 +122,5 @@ module.exports = {
   handleStatus,
   handleStopMidnightReset,
   handleReset,
+  handleResetReservedToday,
 };

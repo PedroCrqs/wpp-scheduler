@@ -24,6 +24,7 @@ const {
   handleFire,
   handleStopMidnightReset,
   handleReset,
+  handleResetReservedToday,
 } = require("./commands");
 const { mergeFormat, mergeFormat2 } = require("./format");
 
@@ -147,7 +148,7 @@ client.on("disconnected", (reason) => {
 // ─── Recebimento de mensagens ────────────────────────────────────────────────
 client.on("message_create", async (msg) => {
   const myId = client.info.wid._serialized;
-
+  
   if (!msg.fromMe || (msg.to !== state.myBsuid && msg.to !== myId)) return;
 
   const botPrefixes = ["✅", "⚠️", "📊", "🗑️", "📋", "📤", "🔺", "🛑"];
@@ -184,6 +185,10 @@ client.on("message_create", async (msg) => {
   }
   if (msg.body.startsWith("!reset")) {
     await handleReset(msg, false);
+    return;
+  }
+  if (msg.body.startsWith("!clearReservations")) {
+    await handleResetReservedToday(msg);
     return;
   }
 

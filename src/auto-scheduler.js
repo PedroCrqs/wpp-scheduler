@@ -362,8 +362,37 @@ async function pruneOldReservations() {
   }
 }
 
+async function clearTodayReservations() {
+  const today = todaySP();
+  let db;
+  try {
+    await doBackup("download"); // 👈 pega versão mais recente do Drive
+    db = new DatabaseSync(DB_PATH);
+    const result = db
+      .prepare("DELETE FROM Dispatched_Today WHERE Reserved_At = ?")
+      .run(today);
+    db.close();
+    db = null;
+    await doBackup("upload"); // 👈 salva no Drive com as reservas removidas
+    if (result.changes > 0) {
+      await persistence.log(
+        "AUTO-SCHEDULER",
+        `${result.changes} today's reservation(s) cleared.`,
+      );
+    }
+  } catch (err) {
+    await persistence.log(
+      "AUTO-SCHEDULER",
+      `Error clearing today's reservations: ${err.message}`,
+    );
+  } finally {
+    db?.close();
+  }
+}
+
 module.exports = {
   fetchAndReserveAnnouncements,
+  clearTodayReservations,
   pruneOldReservations,
   markAsSentInCycle,
   doBackup,

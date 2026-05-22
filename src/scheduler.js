@@ -178,7 +178,10 @@ async function checkMissedDispatches() {
   });
   const current = nowSP();
 
-  if (!state.scheduleDate || state.scheduleDate !== todaySP) return;
+  if (!state.scheduleDate) return;
+  // if (!state.scheduleDate || state.scheduleDate !== todaySP) return;
+  // A verificação scheduleData !== todaySP está bloqueando o WATCHDOG
+
   if (current < "09:00" || current >= "22:00") return;
 
   state.SCHEDULE.forEach((time, index) => {
