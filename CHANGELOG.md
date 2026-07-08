@@ -6,6 +6,29 @@ Todas as alterações relevantes deste projeto serão documentadas neste arquivo
 Based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).  
 Baseado em [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+---
+
+## [4.0.5] - 2026-07-07
+
+### Fixed
+
+- **Puppeteer browser launch failure after unexpected power outage** _(client.js)_
+  - Root cause: A sudden power failure corrupted the system's global Chromium binary located at `/usr/bin/chromium` and left stale lock files in the `/tmp` directory. Because the client configuration forced an explicit `executablePath`, the local node_modules browser was bypassed, causing all scheduler instances to fail with `Failed to launch the browser process: Code: null` on reboot.
+  - Fix: Cleaned up environment lock files (`/tmp/.com.google.Chrome*`), reinstalled the system's global `chromium` package to repair binary corruption, and added instructions to optionally fall back to Puppeteer's internal managed browser to prevent OS-level disruptions from blocking the boot cycle.
+
+---
+
+### Corrigido
+
+- **Falha na inicialização do navegador Puppeteer após queda de energia** _(client.js)_
+  - Causa raiz: Um desligamento abrupto corrompeu o binário global do Chromium do sistema localizado em `/usr/bin/chromium` e deixou arquivos de trava (lock) órfãos no diretório `/tmp`. Como a configuração do cliente forçava um `executablePath` explícito, o navegador local da `node_modules` era ignorado, fazendo com que todas as instâncias do scheduler falhassem com `Failed to launch the browser process: Code: null` no reboot.
+  - Correção: Limpeza dos arquivos de lock do ambiente (`/tmp/.com.google.Chrome*`), reinstalação do pacote global `chromium` do sistema para reparar a corrupção do binário, e documentação técnica para opcionalmente utilizar o navegador interno gerenciado do Puppeteer, evitando que instabilidades do sistema operacional bloqueiem o ciclo de boot.
+
+---
+
+> **Commit:** `fix(client): repair chromium binary corruption and remove system locks post power outage [v4.0.5]`  
+> **Tag:** `v4.0.5`
+
 ## [4.0.4] - 2026-05-22
 
 ### Added
