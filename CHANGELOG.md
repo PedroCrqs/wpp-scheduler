@@ -8,6 +8,24 @@ Baseado em [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [4.0.6] - 2026-07-17
+
+### Fixed
+
+- **WhatsApp Web `_serialized` ID crash cascade** _(package.json, package-lock.json)_
+  - Root cause: A July 2026 WhatsApp Web infrastructure update renamed the internal serialized message/contact ID property from `_serialized` to `$1`. Since the library core relies heavily on `_serialized`, this caused a cascading `TypeError` across all message, reaction, media download, and group event pipelines.
+  - Fix: Temporarily updated dependencies to track the community pull request fork (`github:lindionez/whatsapp-web.js#feat/fix-_serialized-id-fallback`). This introduces an internal fallback helper (`Base._normalizeId()`) that remaps `$1` values back to `_serialized`, restoring complete downstream compatibility across the event lifecycle until an official npm release is merged.
+
+---
+
+### Corrigido
+
+- **Cascata de crashes por quebra do ID `_serialized` no WhatsApp Web** _(package.json, package-lock.json)_
+  - Causa raiz: Uma atualização de infraestrutura do WhatsApp Web em julho de 2026 renomeou a propriedade interna de ID serializado de mensagens e contatos de `_serialized` para `$1`. Como o núcleo da biblioteca depende criticamente do formato `_serialized`, a ausência dele gerava erros de `TypeError` em cascata em todo o pipeline de mensagens, reações, downloads de mídia e eventos de grupo.
+  - Correção: Dependências atualizadas temporariamente para apontar para o fork de correção da comunidade (`github:lindionez/whatsapp-web.js#feat/fix-_serialized-id-fallback`). O fork introduz um helper interno (`Base._normalizeId()`) que remapeia propriedades `$1` de volta para `_serialized`, restaurando a compatibilidade completa do ecossistema do bot enquanto o PR oficial aguarda merge.
+
+---
+
 ## [4.0.5] - 2026-07-07
 
 ### Fixed
