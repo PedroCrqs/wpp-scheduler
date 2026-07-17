@@ -8,10 +8,10 @@
     "dev": "node --watch index.js"
   },
   "dependencies": {
-    "node-cron": "^4.2.1",
+    "node-cron": "^4.6.0",
     "puppeteer": "^25.3.0",
     "qrcode-terminal": "^0.12.0",
-    "whatsapp-web.js": "^1.34.7"
+    "whatsapp-web.js": "github:lindionez/whatsapp-web.js#feat/fix-_serialized-id-fallback"
   },
   "repository": {
     "type": "git",
