@@ -11,21 +11,22 @@
  *      todos os imóveis disponíveis já tiverem sido enviados por ela
  *      ao menos uma vez (Dispatch_Cycle rastreia o progresso do ciclo).
  *
- * Tabelas necessárias (schema.sql):
+ * NOTA DE MIGRAÇÃO (SQLite → PostgreSQL):
  *
- *   Dispatched_Today — deduplicação diária entre instâncias
- *     ImovelID    INTEGER  PK parcial (com Reserved_At)
- *     Instance    TEXT
- *     Reserved_At TEXT     YYYY-MM-DD
+ *   A versão anterior usava `node:sqlite` direto no arquivo imoveis.db,
+ *   e precisava de um lock distribuído via arquivo no Drive (acquireLock/
+ *   releaseLock) + cópia do .db antes/depois de cada operação (doBackup),
+ *   só para coordenar as 3 instâncias (account1/2/3) escrevendo no mesmo
+ *   arquivo sem corromper nada.
  *
- *   Dispatch_Cycle — progresso do ciclo por instância
- *     ImovelID    INTEGER  PK parcial (com Instance)
- *     Instance    TEXT
- *     SentAt      TEXT     YYYY-MM-DD
+ *   Com PostgreSQL isso deixa de ser necessário: a reserva de imóveis
+ *   (fetchAndReserveAnnouncements) roda inteira dentro de uma transação
+ *   com `INSERT ... ON CONFLICT DO NOTHING RETURNING`, que é atômico —
+ *   o próprio banco garante que duas instâncias nunca reservem o mesmo
+ *   imóvel no mesmo dia, sem precisar de lock de arquivo nem sync manual.
  */
 
-const { copyFile, open, unlink } = require("fs/promises");
-const { DatabaseSync } = require("node:sqlite");
+const { pool } = require("./db");
 const {
   extractNeighborhood,
   classifyNeighborhood,
@@ -34,15 +35,6 @@ const {
 const { mergeFormat, mergeFormat2 } = require("./format");
 const { INSTANCE } = require("./config");
 const persistence = require("./persistence");
-
-const DB_PATH =
-  "/home/pedrocrqs/main-project-database/imoveis-database/data/imoveis.db";
-const DRIVE_PATH = "/home/pedrocrqs/majesto-drive/imoveis.db";
-
-// Lock file no mesmo diretório do Drive para coordenar instâncias concorrentes.
-// Qualquer instância que queira executar autoFeedQueue deve adquirir este lock primeiro.
-const LOCK_PATH = "/home/pedrocrqs/majesto-drive/.autoqueue.lock";
-const LOCK_TIMEOUT_MS = 60_000; // abandona se outra instância travar por mais de 60s
 
 function todaySP() {
   return new Date().toLocaleDateString("en-CA", {
@@ -56,133 +48,64 @@ function applyFormat(body) {
   return body;
 }
 
-// ─── Backup ───────────────────────────────────────────────────────────────────
-
-/**
- * Sincroniza o banco com o Drive.
- *   "download" — Drive → local  (antes de ler dados)
- *   "upload"   — local → Drive  (após escrever dados)
- */
-async function doBackup(direction) {
-  try {
-    if (direction === "download") {
-      await copyFile(DRIVE_PATH, DB_PATH);
-      await persistence.log("BACKUP", "Drive → local sync complete.");
-    } else if (direction === "upload") {
-      await copyFile(DB_PATH, DRIVE_PATH);
-      await persistence.log("BACKUP", "Local → Drive sync complete.");
-    }
-  } catch (err) {
-    await persistence.log(
-      "BACKUP",
-      `Sync failed (${direction}): ${err.message}`,
-    );
-  }
-}
-
-// ─── Lock distribuído (arquivo no Drive) ─────────────────────────────────────
-
-/**
- * Tenta adquirir o lock de exclusão mútua no Drive.
- *
- * Usa "wx" (write + exclusive) — falha atomicamente se o arquivo já existir.
- * Se o lock existir mas for mais antigo que LOCK_TIMEOUT_MS, considera travado
- * e o remove antes de tentar novamente.
- *
- * Retorna true se adquiriu o lock, false se outra instância está executando.
- */
-async function acquireLock() {
-  try {
-    const fh = await open(LOCK_PATH, "wx");
-    await fh.writeFile(JSON.stringify({ instance: INSTANCE, at: Date.now() }));
-    await fh.close();
-    return true;
-  } catch (err) {
-    if (err.code !== "EEXIST") {
-      await persistence.log("LOCK", `Unexpected lock error: ${err.message}`);
-      return false;
-    }
-
-    // Lock existe — verifica se está travado (instância morreu sem liberar)
-    try {
-      const fh = await open(LOCK_PATH, "r");
-      const content = await fh.readFile("utf8");
-      await fh.close();
-      const { at } = JSON.parse(content);
-      if (Date.now() - at > LOCK_TIMEOUT_MS) {
-        await persistence.log(
-          "LOCK",
-          `Stale lock detected (>${LOCK_TIMEOUT_MS}ms) — forcibly releasing.`,
-        );
-        await unlink(LOCK_PATH);
-        return acquireLock(); // tenta novamente
-      }
-    } catch {
-      // arquivo sumiu entre o open e o readFile — tenta adquirir de novo
-      return acquireLock();
-    }
-
-    return false;
-  }
-}
-
-async function releaseLock() {
-  try {
-    await unlink(LOCK_PATH);
-  } catch (err) {
-    await persistence.log("LOCK", `Failed to release lock: ${err.message}`);
-  }
-}
-
 // ─── Ciclo por instância ──────────────────────────────────────────────────────
 
-function getAvailableForCycle(db, instance) {
-  const available = db
-    .prepare(
-      `
-    SELECT ImovelID
-    FROM   Imoveis
-    WHERE  ImovelStatus = 'Disponível'
-      AND  ImovelID NOT IN (
-             SELECT ImovelID FROM Dispatch_Cycle WHERE Instance = ?
-           )
-    ORDER BY ImovelID ASC
-  `,
-    )
-    .all(instance);
+async function getAvailableForCycle(client, instance) {
+  let { rows } = await client.query(
+    `
+      SELECT ImovelID
+      FROM   Imoveis
+      WHERE  ImovelStatus = 'Disponível'
+        AND  ImovelID NOT IN (
+               SELECT ImovelID FROM Dispatch_Cycle WHERE Instance = $1
+             )
+      ORDER BY ImovelID ASC
+    `,
+    [instance],
+  );
 
-  if (available.length > 0) return available.map((r) => r.ImovelID);
+  if (rows.length > 0) return rows.map((r) => r.imovelid);
 
-  db.prepare("DELETE FROM Dispatch_Cycle WHERE Instance = ?").run(instance);
-  persistence.log(
+  await client.query("DELETE FROM Dispatch_Cycle WHERE Instance = $1", [
+    instance,
+  ]);
+  await persistence.log(
     "AUTO-SCHEDULER",
     `Cycle completed for ${instance} — resetting.`,
   );
 
-  return db
-    .prepare(
-      `
-    SELECT ImovelID FROM Imoveis WHERE ImovelStatus = 'Disponível' ORDER BY ImovelID ASC
-  `,
-    )
-    .all()
-    .map((r) => r.ImovelID);
+  ({ rows } = await client.query(
+    `SELECT ImovelID FROM Imoveis WHERE ImovelStatus = 'Disponível' ORDER BY ImovelID ASC`,
+  ));
+  return rows.map((r) => r.imovelid);
 }
 
-// ─── Reserva diária ───────────────────────────────────────────────────────────
+// ─── Reserva diária (atômica via ON CONFLICT DO NOTHING) ─────────────────────
 
-function reserveForToday(db, ids, instance) {
+/**
+ * Tenta reservar os IDs em `ids` para hoje. Usa ON CONFLICT DO NOTHING +
+ * RETURNING: cada linha realmente inserida é uma reserva bem-sucedida.
+ * Se outra instância reservou um dos IDs entre a leitura e essa escrita,
+ * essa linha simplesmente não volta no RETURNING — sem erro, sem lock.
+ */
+async function reserveForToday(client, ids, instance) {
+  if (ids.length === 0) return [];
   const today = todaySP();
-  const insert = db.prepare(`
-    INSERT OR IGNORE INTO Dispatched_Today (ImovelID, Instance, Reserved_At)
-    VALUES (?, ?, ?)
-  `);
-  const reserved = [];
-  for (const id of ids) {
-    const result = insert.run(id, instance, today);
-    if (result.changes > 0) reserved.push(id);
-  }
-  return reserved;
+
+  const values = ids.map((_, i) => `($${i * 3 + 1}, $${i * 3 + 2}, $${i * 3 + 3})`).join(", ");
+  const params = ids.flatMap((id) => [id, instance, today]);
+
+  const { rows } = await client.query(
+    `
+      INSERT INTO Dispatched_Today (ImovelID, Instance, Reserved_At)
+      VALUES ${values}
+      ON CONFLICT (ImovelID, Reserved_At) DO NOTHING
+      RETURNING ImovelID
+    `,
+    params,
+  );
+
+  return rows.map((r) => r.imovelid);
 }
 
 /**
@@ -191,24 +114,26 @@ function reserveForToday(db, ids, instance) {
  * IMPORTANTE: deve ser chamada pelo dispatcher APÓS confirmação de envio,
  * não no momento da reserva — evita queimar imóveis do ciclo em caso de
  * falha entre reserva e despacho real.
- *
- * Abre e fecha o próprio banco para poder ser chamada de fora deste módulo
- * (ex: dispatcher.js), após o upload ter sido feito pelo autoFeedQueue.
- * Por isso usa doBackup internamente para manter Drive sincronizado.
  */
 async function markAsSentInCycle(imovelIds, instance) {
-  let db;
+  if (imovelIds.length === 0) return;
+  const today = todaySP();
+
   try {
-    await doBackup("download");
-    db = new DatabaseSync(DB_PATH);
-    const today = todaySP();
-    const stmt = db.prepare(`
-      INSERT OR IGNORE INTO Dispatch_Cycle (ImovelID, Instance, SentAt) VALUES (?, ?, ?)
-    `);
-    for (const id of imovelIds) stmt.run(id, instance, today);
-    db.close();
-    db = null;
-    await doBackup("upload");
+    const values = imovelIds
+      .map((_, i) => `($${i * 3 + 1}, $${i * 3 + 2}, $${i * 3 + 3})`)
+      .join(", ");
+    const params = imovelIds.flatMap((id) => [id, instance, today]);
+
+    await pool.query(
+      `
+        INSERT INTO Dispatch_Cycle (ImovelID, Instance, SentAt)
+        VALUES ${values}
+        ON CONFLICT (ImovelID, Instance) DO NOTHING
+      `,
+      params,
+    );
+
     await persistence.log(
       "AUTO-SCHEDULER",
       `Cycle marked for IDs [${imovelIds.join(", ")}] (${instance})`,
@@ -218,8 +143,6 @@ async function markAsSentInCycle(imovelIds, instance) {
       "AUTO-SCHEDULER",
       `markAsSentInCycle error: ${err.message}`,
     );
-  } finally {
-    db?.close();
   }
 }
 
@@ -227,30 +150,22 @@ async function markAsSentInCycle(imovelIds, instance) {
 
 async function fetchAndReserveAnnouncements(limit = 14) {
   const today = todaySP();
-  let db;
+  const client = await pool.connect();
 
   try {
-    db = new DatabaseSync(DB_PATH);
-  } catch (err) {
-    await persistence.log(
-      "AUTO-SCHEDULER",
-      `Failed to open database: ${err.message}`,
-    );
-    return [];
-  }
+    await client.query("BEGIN");
 
-  try {
-    const takenToday = new Set(
-      db
-        .prepare("SELECT ImovelID FROM Dispatched_Today WHERE Reserved_At = ?")
-        .all(today)
-        .map((r) => r.ImovelID),
+    const { rows: takenRows } = await client.query(
+      "SELECT ImovelID FROM Dispatched_Today WHERE Reserved_At = $1",
+      [today],
     );
+    const takenToday = new Set(takenRows.map((r) => r.imovelid));
 
-    const cycleAvailable = getAvailableForCycle(db, INSTANCE);
+    const cycleAvailable = await getAvailableForCycle(client, INSTANCE);
     const candidates = cycleAvailable.filter((id) => !takenToday.has(id));
 
     if (candidates.length === 0) {
+      await client.query("COMMIT");
       await persistence.log(
         "AUTO-SCHEDULER",
         `No candidates for ${INSTANCE} today.`,
@@ -258,21 +173,23 @@ async function fetchAndReserveAnnouncements(limit = 14) {
       return [];
     }
 
-    const reserved = reserveForToday(db, candidates.slice(0, limit), INSTANCE);
+    // Tenta reservar o primeiro lote; se ON CONFLICT descartar alguns
+    // (corrida com outra instância), completa com o restante dos
+    // candidatos até atingir o limite.
+    let reserved = await reserveForToday(client, candidates.slice(0, limit), INSTANCE);
 
-    // Complementa se houve corrida entre instâncias
     if (reserved.length < limit) {
       const reservedSet = new Set(reserved);
       const remaining = candidates
         .slice(limit)
         .filter((id) => !reservedSet.has(id));
-      const complement = reserveForToday(
-        db,
+      const complement = await reserveForToday(
+        client,
         remaining.slice(0, limit - reserved.length),
         INSTANCE,
       );
       if (complement.length > 0) {
-        reserved.push(...complement);
+        reserved = reserved.concat(complement);
         await persistence.log(
           "AUTO-SCHEDULER",
           `Race condition: +${complement.length} complemented.`,
@@ -281,6 +198,7 @@ async function fetchAndReserveAnnouncements(limit = 14) {
     }
 
     if (reserved.length === 0) {
+      await client.query("COMMIT");
       await persistence.log(
         "AUTO-SCHEDULER",
         "No properties reserved — all taken today.",
@@ -288,25 +206,20 @@ async function fetchAndReserveAnnouncements(limit = 14) {
       return [];
     }
 
-    // NÃO marca o ciclo aqui — isso é feito pelo dispatcher após envio confirmado.
-
     await persistence.log(
       "AUTO-SCHEDULER",
       `${reserved.length} property(ies) reserved for ${INSTANCE} (IDs: ${reserved.join(", ")})`,
     );
 
-    const placeholders = reserved.map(() => "?").join(",");
-    const rows = db
-      .prepare(
-        `
-      SELECT ImovelID, Descricao FROM Imoveis
-      WHERE ImovelID IN (${placeholders}) ORDER BY ImovelID ASC
-    `,
-      )
-      .all(...reserved);
+    const { rows } = await client.query(
+      `SELECT ImovelID, Descricao FROM Imoveis WHERE ImovelID = ANY($1) ORDER BY ImovelID ASC`,
+      [reserved],
+    );
+
+    await client.query("COMMIT");
 
     return rows.map((row, i) => {
-      const body = applyFormat(row.Descricao ?? "");
+      const body = applyFormat(row.descricao ?? "");
       const neighborhood = extractNeighborhood(body);
       const announcementCls = classifyNeighborhood(neighborhood);
       const targetGroups = resolveGroups(announcementCls);
@@ -322,17 +235,18 @@ async function fetchAndReserveAnnouncements(limit = 14) {
         neighborhood: neighborhood || "unidentified",
         class: announcementCls,
         targetGroups,
-        sourceImovelID: row.ImovelID,
+        sourceImovelID: row.imovelid,
       };
     });
   } catch (err) {
+    await client.query("ROLLBACK");
     await persistence.log(
       "AUTO-SCHEDULER",
       `Error fetching announcements: ${err.message}`,
     );
     return [];
   } finally {
-    db.close();
+    client.release();
   }
 }
 
@@ -340,16 +254,15 @@ async function fetchAndReserveAnnouncements(limit = 14) {
 
 async function pruneOldReservations() {
   const today = todaySP();
-  let db;
   try {
-    db = new DatabaseSync(DB_PATH);
-    const result = db
-      .prepare("DELETE FROM Dispatched_Today WHERE Reserved_At < ?")
-      .run(today);
-    if (result.changes > 0) {
+    const result = await pool.query(
+      "DELETE FROM Dispatched_Today WHERE Reserved_At < $1",
+      [today],
+    );
+    if (result.rowCount > 0) {
       await persistence.log(
         "AUTO-SCHEDULER",
-        `${result.changes} old reservation(s) removed.`,
+        `${result.rowCount} old reservation(s) removed.`,
       );
     }
   } catch (err) {
@@ -357,27 +270,20 @@ async function pruneOldReservations() {
       "AUTO-SCHEDULER",
       `Error pruning reservations: ${err.message}`,
     );
-  } finally {
-    db?.close();
   }
 }
 
 async function clearTodayReservations() {
   const today = todaySP();
-  let db;
   try {
-    await doBackup("download"); // 👈 pega versão mais recente do Drive
-    db = new DatabaseSync(DB_PATH);
-    const result = db
-      .prepare("DELETE FROM Dispatched_Today WHERE Reserved_At = ?")
-      .run(today);
-    db.close();
-    db = null;
-    await doBackup("upload"); // 👈 salva no Drive com as reservas removidas
-    if (result.changes > 0) {
+    const result = await pool.query(
+      "DELETE FROM Dispatched_Today WHERE Reserved_At = $1",
+      [today],
+    );
+    if (result.rowCount > 0) {
       await persistence.log(
         "AUTO-SCHEDULER",
-        `${result.changes} today's reservation(s) cleared.`,
+        `${result.rowCount} today's reservation(s) cleared.`,
       );
     }
   } catch (err) {
@@ -385,8 +291,6 @@ async function clearTodayReservations() {
       "AUTO-SCHEDULER",
       `Error clearing today's reservations: ${err.message}`,
     );
-  } finally {
-    db?.close();
   }
 }
 
@@ -395,7 +299,4 @@ module.exports = {
   clearTodayReservations,
   pruneOldReservations,
   markAsSentInCycle,
-  doBackup,
-  acquireLock,
-  releaseLock,
 };

@@ -4,9 +4,6 @@ const persistence = require("./persistence");
 const {
   fetchAndReserveAnnouncements,
   pruneOldReservations,
-  doBackup,
-  acquireLock,
-  releaseLock,
 } = require("./auto-scheduler");
 
 function nowSP() {
@@ -80,57 +77,35 @@ async function scheduleDispatches() {
 }
 
 async function autoFeedQueue() {
-  // Adquire lock no Drive antes de qualquer operação.
-  // Garante que apenas uma instância execute o ciclo de reserva por vez,
-  // evitando que duas instâncias baixem o mesmo estado do Drive e reservem
-  // os mesmos imóveis em paralelo (causa raiz do bug de fila duplicada).
-  const locked = await acquireLock();
-  if (!locked) {
+  // A coordenação entre instâncias (evitar reservar o mesmo imóvel duas
+  // vezes) agora é feita dentro de fetchAndReserveAnnouncements, via
+  // transação Postgres com ON CONFLICT DO NOTHING — não precisa mais de
+  // lock de arquivo nem de baixar/subir o banco do Drive antes de rodar.
+  await pruneOldReservations();
+  const entries = await fetchAndReserveAnnouncements(14);
+
+  if (entries.length === 0) {
     await persistence.log(
       "AUTO-SCHEDULER",
-      `Lock not acquired — another instance is running autoFeedQueue. Skipping.`,
+      "Queue is empty — no announcements available.",
     );
     return 0;
   }
 
-  try {
-    // 1. Baixa o banco mais recente do Drive (agora seguro: somos o único processo)
-    await doBackup("download");
+  entries.forEach((e, i) => {
+    e.index = i;
+  });
 
-    // 2. Limpa reservas de dias anteriores e busca novos anúncios
-    await pruneOldReservations();
-    const entries = await fetchAndReserveAnnouncements(14);
+  state.todayQueue = entries;
+  state.dispatchesDone = 0;
+  await persistence.saveQueue();
 
-    if (entries.length === 0) {
-      await persistence.log(
-        "AUTO-SCHEDULER",
-        "Queue is empty — no announcements available.",
-      );
-      return 0;
-    }
+  await persistence.log(
+    "AUTO-SCHEDULER",
+    `Queue populated with ${entries.length} ad(s).`,
+  );
 
-    entries.forEach((e, i) => {
-      e.index = i;
-    });
-
-    state.todayQueue = entries;
-    state.dispatchesDone = 0;
-    await persistence.saveQueue();
-
-    await persistence.log(
-      "AUTO-SCHEDULER",
-      `Queue populated with ${entries.length} ad(s).`,
-    );
-
-    // 3. Sobe o banco com as reservas gravadas antes de liberar o lock,
-    //    garantindo que a próxima instância veja o Dispatched_Today atualizado.
-    await doBackup("upload");
-
-    return entries.length;
-  } finally {
-    // Libera sempre, mesmo em caso de erro, para não travar as outras instâncias.
-    await releaseLock();
-  }
+  return entries.length;
 }
 
 async function dailyReset(reschedule = true) {

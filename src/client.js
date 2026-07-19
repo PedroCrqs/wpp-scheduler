@@ -32,10 +32,13 @@ const client = new Client({
   authStrategy: new LocalAuth({
     clientId: `scheduler-bot-${INSTANCE}`,
     dataPath: SESSIONS_DIR,
+    webVersion: '2.3000.1014.0',
+    webVersionCache: {
+      type: 'remote',
+      remotePath:'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.3000.1014.0.html'}
   }),
   puppeteer: {
     headless: true,
-    executablePath: "/usr/bin/chromium",
     args: [
       "--no-sandbox",
       "--disable-setuid-sandbox",

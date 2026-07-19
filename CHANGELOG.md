@@ -6,6 +6,47 @@ Todas as alterações relevantes deste projeto serão documentadas neste arquivo
 Based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).  
 Baseado em [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+---
+
+## [4.0.6] - 2026-07-17
+
+### Fixed
+
+- **WhatsApp Web `_serialized` ID crash cascade** _(package.json, package-lock.json)_
+  - Root cause: A July 2026 WhatsApp Web infrastructure update renamed the internal serialized message/contact ID property from `_serialized` to `$1`. Since the library core relies heavily on `_serialized`, this caused a cascading `TypeError` across all message, reaction, media download, and group event pipelines.
+  - Fix: Temporarily updated dependencies to track the community pull request fork (`github:lindionez/whatsapp-web.js#feat/fix-_serialized-id-fallback`). This introduces an internal fallback helper (`Base._normalizeId()`) that remaps `$1` values back to `_serialized`, restoring complete downstream compatibility across the event lifecycle until an official npm release is merged.
+
+---
+
+### Corrigido
+
+- **Cascata de crashes por quebra do ID `_serialized` no WhatsApp Web** _(package.json, package-lock.json)_
+  - Causa raiz: Uma atualização de infraestrutura do WhatsApp Web em julho de 2026 renomeou a propriedade interna de ID serializado de mensagens e contatos de `_serialized` para `$1`. Como o núcleo da biblioteca depende criticamente do formato `_serialized`, a ausência dele gerava erros de `TypeError` em cascata em todo o pipeline de mensagens, reações, downloads de mídia e eventos de grupo.
+  - Correção: Dependências atualizadas temporariamente para apontar para o fork de correção da comunidade (`github:lindionez/whatsapp-web.js#feat/fix-_serialized-id-fallback`). O fork introduz um helper interno (`Base._normalizeId()`) que remapeia propriedades `$1` de volta para `_serialized`, restaurando a compatibilidade completa do ecossistema do bot enquanto o PR oficial aguarda merge.
+
+---
+
+## [4.0.5] - 2026-07-07
+
+### Fixed
+
+- **Puppeteer browser launch failure after unexpected power outage** _(client.js)_
+  - Root cause: A sudden power failure corrupted the system's global Chromium binary located at `/usr/bin/chromium` and left stale lock files in the `/tmp` directory. Because the client configuration forced an explicit `executablePath`, the local node_modules browser was bypassed, causing all scheduler instances to fail with `Failed to launch the browser process: Code: null` on reboot.
+  - Fix: Cleaned up environment lock files (`/tmp/.com.google.Chrome*`), reinstalled the system's global `chromium` package to repair binary corruption, and added instructions to optionally fall back to Puppeteer's internal managed browser to prevent OS-level disruptions from blocking the boot cycle.
+
+---
+
+### Corrigido
+
+- **Falha na inicialização do navegador Puppeteer após queda de energia** _(client.js)_
+  - Causa raiz: Um desligamento abrupto corrompeu o binário global do Chromium do sistema localizado em `/usr/bin/chromium` e deixou arquivos de trava (lock) órfãos no diretório `/tmp`. Como a configuração do cliente forçava um `executablePath` explícito, o navegador local da `node_modules` era ignorado, fazendo com que todas as instâncias do scheduler falhassem com `Failed to launch the browser process: Code: null` no reboot.
+  - Correção: Limpeza dos arquivos de lock do ambiente (`/tmp/.com.google.Chrome*`), reinstalação do pacote global `chromium` do sistema para reparar a corrupção do binário, e documentação técnica para opcionalmente utilizar o navegador interno gerenciado do Puppeteer, evitando que instabilidades do sistema operacional bloqueiem o ciclo de boot.
+
+---
+
+> **Commit:** `fix(client): repair chromium binary corruption and remove system locks post power outage [v4.0.5]`  
+> **Tag:** `v4.0.5`
+
 ## [4.0.4] - 2026-05-22
 
 ### Added
