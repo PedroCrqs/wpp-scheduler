@@ -32,11 +32,12 @@ const client = new Client({
   authStrategy: new LocalAuth({
     clientId: `scheduler-bot-${INSTANCE}`,
     dataPath: SESSIONS_DIR,
-    webVersion: '2.3000.1014.0',
-    webVersionCache: {
-      type: 'remote',
-      remotePath:'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.3000.1014.0.html'}
   }),
+  // Força uma versão estável e mantida pela comunidade atualizada
+  webVersionCache: {
+    type: 'remote',
+    remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.3000.1014589918-alpha.html',
+  },
   puppeteer: {
     headless: true,
     args: [
@@ -49,6 +50,16 @@ const client = new Client({
       "--disable-software-rasterizer",
     ],
   },
+});
+
+// Adicione estes ouvintes ANTES do client.initialize() para debugar a transição:
+client.on("authenticated", async () => {
+  await persistence.log("BOT", "Autenticado no WhatsApp! Carregando dados da sessão...");
+});
+
+client.on("auth_failure", (msg) => {
+  persistence.log("ERROR", `Auth failure: ${msg}`);
+  setTimeout(startBot, 30000);
 });
 
 state.client = client;
