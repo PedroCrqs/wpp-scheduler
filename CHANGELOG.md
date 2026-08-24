@@ -8,6 +8,85 @@ Baseado em [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [5.0.0] - 2026-07-19
+
+### Changed
+
+- **Migrated database layer from SQLite to PostgreSQL** _(auto-scheduler.js, scheduler.js, db.js)_
+  - Context: the underlying `imoveis-database` was migrated from a local SQLite file to a PostgreSQL server shared live by the CLI, the website, and this bot's concurrent instances (`account1/2/3`).
+  - `src/db.js` (new): shared `pg.Pool` reading `DATABASE_URL` from the environment.
+  - `auto-scheduler.js` rewritten: `node:sqlite` direct file access replaced with parameterized `pg` queries. Row access adjusted for Postgres' lowercase-folded unquoted identifiers (`row.ImovelID` → `row.imovelid`).
+
+### Removed
+
+- **File-based distributed lock and Drive `.db` sync** _(auto-scheduler.js, scheduler.js)_
+  - Root cause it existed for: SQLite can't handle concurrent multi-process writes safely, so the 3 bot instances previously coordinated via `acquireLock()`/`releaseLock()` (a lock file on Google Drive) plus `doBackup("download"/"upload")` copying the entire `.db` before/after every reservation cycle — expensive, and prone to leaving a stuck lock if an instance died mid-run (hence the old `LOCK_TIMEOUT_MS` safety net).
+  - With Postgres this entire mechanism is unnecessary: `fetchAndReserveAnnouncements` now reserves properties inside a single transaction using `INSERT ... ON CONFLICT (ImovelID, Reserved_At) DO NOTHING RETURNING ImovelID` — atomic at the database level. Two instances racing for the same property simply can't both succeed; no file lock, no Drive round-trip.
+  - Verified with a concurrency test: 3 simulated instances calling `fetchAndReserveAnnouncements` simultaneously against a real Postgres — zero duplicate reservations, no lock of any kind involved.
+  - `scheduler.js`'s `autoFeedQueue()` simplified accordingly: no longer wraps the cycle in `acquireLock`/`doBackup`/`releaseLock`.
+
+### Added
+
+- **`pg` dependency** _(package.json)_ — `^8.13.0`, node-postgres client.
+- **Dockerfile** (new) — initially based on `ghcr.io/puppeteer/puppeteer:23.9.0`, later rewritten to `node:18-slim` + Chromium installed via `apt-get` with `PUPPETEER_SKIP_CHROMIUM_DOWNLOAD`/`PUPPETEER_EXECUTABLE_PATH` (see "Fixed" below for why). Runs as the image's non-root `pptruser`. Instance (`account1/2/3`) is selected via `command:` in `docker-compose.yml`, not baked into the image.
+
+### Fixed
+
+- **`reserveForToday` partial-insert race condition preserved, not reintroduced** _(auto-scheduler.js)_
+  - The original "complement" retry logic (if fewer slots than requested got reserved, top up from the remaining candidates) was ported over using `INSERT ... RETURNING` instead of manual pre/post row counting — same intent, now backed by an atomic operation instead of a read-then-write gap.
+- **`Could not find Chrome` at runtime, caused by `npm ci` running as root** _(Dockerfile)_
+  - Root cause: `npm ci` ran under `USER root` (to allow `chown`), so Puppeteer's postinstall downloaded Chrome into `/root/.cache/puppeteer` — but the container runs as `pptruser` at runtime, which looks for it in `/home/pptruser/.cache/puppeteer`. Two different locations, so the browser was never found.
+  - Fix: switched to `USER pptruser` before `npm ci`, so the download lands in the same cache directory the app looks up at runtime. `COPY --chown=pptruser:pptruser` replaces the separate `chown -R pptruser:pptruser /app` step, which also cut a ~129s recursive chown out of the build.
+- **`webVersionCache` nested inside `LocalAuth`, silently ignored by `whatsapp-web.js`** _(client.js)_
+  - Root cause: `webVersion` and `webVersionCache` were nested inside the `authStrategy: new LocalAuth({...})` options object instead of at the root of the `Client` options — `whatsapp-web.js` reads these two keys from the top-level `Client` config, not from `LocalAuth`, so they were silently ignored.
+  - Fix: moved `webVersionCache` (and `webVersion`) to the root level of the `Client` options object, alongside `authStrategy`.
+- **Instance froze at "Syncing..." after reading the QR code, `ready` event never fired** _(client.js)_
+  - Root cause: combined with the nesting bug above, the pinned WhatsApp Web version (`2.3000.1014.0`) and its remote cache URL were outdated relative to WhatsApp Web's current DOM/WebSocket structure, so the client authenticated but never completed sync.
+  - Fix: updated the remote `webVersionCache` URL to point at a community-maintained stable HTML build (`2.3000.1014589918-alpha.html`), working around the broken selectors.
+  - Also added `authenticated` and `auth_failure` event listeners during client startup for better diagnostic visibility in logs before `ready` fires.
+
+---
+
+### Alterado
+
+- **Camada de banco de dados migrada de SQLite para PostgreSQL** _(auto-scheduler.js, scheduler.js, db.js)_
+  - Contexto: o `imoveis-database` subjacente foi migrado de um arquivo SQLite local para um servidor PostgreSQL acessado ao vivo pelo CLI, pelo site, e pelas instâncias concorrentes deste robô (`account1/2/3`).
+  - `src/db.js` (novo): `pg.Pool` compartilhado, lendo `DATABASE_URL` do ambiente.
+  - `auto-scheduler.js` reescrito: acesso direto ao arquivo via `node:sqlite` substituído por queries parametrizadas com `pg`. Acesso às linhas ajustado para os identificadores não-quotados que o Postgres normaliza para minúsculo (`row.ImovelID` → `row.imovelid`).
+
+### Removido
+
+- **Lock distribuído por arquivo e sync do `.db` com o Drive** _(auto-scheduler.js, scheduler.js)_
+  - Motivo de existir: o SQLite não lida bem com escrita concorrente entre múltiplos processos, então as 3 instâncias do robô coordenavam via `acquireLock()`/`releaseLock()` (um arquivo de lock no Google Drive) somado a `doBackup("download"/"upload")`, copiando o `.db` inteiro antes/depois de cada ciclo de reserva — caro, e sujeito a deixar um lock travado se uma instância morresse no meio (daí o `LOCK_TIMEOUT_MS` de segurança que existia).
+  - Com Postgres, todo esse mecanismo se torna desnecessário: `fetchAndReserveAnnouncements` agora reserva os imóveis dentro de uma única transação usando `INSERT ... ON CONFLICT (ImovelID, Reserved_At) DO NOTHING RETURNING ImovelID` — atômico no nível do banco. Duas instâncias disputando o mesmo imóvel simplesmente não conseguem ter sucesso as duas; sem lock de arquivo, sem ida-e-volta pro Drive.
+  - Validado com um teste de concorrência: 3 instâncias simuladas chamando `fetchAndReserveAnnouncements` ao mesmo tempo contra um Postgres real — zero reservas duplicadas, nenhum tipo de lock envolvido.
+  - `autoFeedQueue()` do `scheduler.js` simplificado: não envolve mais o ciclo em `acquireLock`/`doBackup`/`releaseLock`.
+
+### Adicionado
+
+- **Dependência `pg`** _(package.json)_ — `^8.13.0`, cliente node-postgres.
+- **Dockerfile** (novo) — inicialmente baseado em `ghcr.io/puppeteer/puppeteer:23.9.0`, depois reescrito para `node:18-slim` + Chromium instalado via `apt-get` com `PUPPETEER_SKIP_CHROMIUM_DOWNLOAD`/`PUPPETEER_EXECUTABLE_PATH` (ver "Corrigido" abaixo pelo motivo). Roda como o usuário não-root `pptruser` da própria imagem. A instância (`account1/2/3`) é escolhida via `command:` no `docker-compose.yml`, não fica fixa na imagem.
+
+### Corrigido
+
+- **Lógica de "complemento" em `reserveForToday` preservada, não reintroduzida com bug** _(auto-scheduler.js)_
+  - A lógica original de retry (se menos vagas do que o pedido foram reservadas, completa com os candidatos restantes) foi portada usando `INSERT ... RETURNING` em vez de contagem manual antes/depois — mesma intenção, agora apoiada numa operação atômica em vez de uma janela entre leitura e escrita.
+- **`Could not find Chrome` em runtime, causado pelo `npm ci` rodando como root** _(Dockerfile)_
+  - Causa raiz: `npm ci` rodava sob `USER root` (para permitir o `chown` seguinte), então o postinstall do Puppeteer baixava o Chrome para `/root/.cache/puppeteer` — mas o container roda como `pptruser` em runtime, que procura em `/home/pptruser/.cache/puppeteer`. Dois lugares diferentes, então o navegador nunca era encontrado.
+  - Correção: trocado para `USER pptruser` antes do `npm ci`, para que o download caia no mesmo diretório de cache que a aplicação consulta em runtime. `COPY --chown=pptruser:pptruser` substitui o `chown -R pptruser:pptruser /app` que existia separado, o que também cortou ~129s de chown recursivo do tempo de build.
+- **`webVersionCache` aninhado dentro do `LocalAuth`, ignorado silenciosamente pelo `whatsapp-web.js`** _(client.js)_
+  - Causa raiz: `webVersion` e `webVersionCache` estavam aninhados dentro do objeto de opções do `authStrategy: new LocalAuth({...})`, em vez de estarem na raiz das opções do `Client` — o `whatsapp-web.js` lê essas duas chaves do nível raiz da config do `Client`, não do `LocalAuth`, então elas eram silenciosamente ignoradas.
+  - Correção: `webVersionCache` (e `webVersion`) movidos para o nível raiz do objeto de opções do `Client`, junto com `authStrategy`.
+- **Instância congelava em "Sincronizando..." após ler o QR Code, evento `ready` nunca disparava** _(client.js)_
+  - Causa raiz: combinado com o bug de aninhamento acima, a versão fixa do WhatsApp Web (`2.3000.1014.0`) e sua URL de cache remota estavam desatualizadas em relação à estrutura DOM/WebSocket atual do WhatsApp Web, fazendo com que o cliente autenticasse mas nunca completasse a sincronização.
+  - Correção: URL do `webVersionCache` remoto atualizada para apontar pra uma build HTML estável mantida pela comunidade (`2.3000.1014589918-alpha.html`), contornando os seletores quebrados.
+  - Também adicionados os listeners de eventos `authenticated` e `auth_failure` durante a inicialização do cliente, para melhor rastreabilidade de estado no log antes do `ready` disparar.
+
+---
+
+> **Commit:** `refactor(db): migrate to PostgreSQL, remove file-lock/Drive-sync coordination; feat(docker): add Dockerfile for containerized deployment [v5.0.0]`  
+> **Tag:** `v5.0.0`
+
 ## [4.0.6] - 2026-07-17
 
 ### Fixed

@@ -52,16 +52,6 @@ const client = new Client({
   },
 });
 
-// Adicione estes ouvintes ANTES do client.initialize() para debugar a transição:
-client.on("authenticated", async () => {
-  await persistence.log("BOT", "Autenticado no WhatsApp! Carregando dados da sessão...");
-});
-
-client.on("auth_failure", (msg) => {
-  persistence.log("ERROR", `Auth failure: ${msg}`);
-  setTimeout(startBot, 30000);
-});
-
 state.client = client;
 
 async function startBot() {
@@ -89,6 +79,18 @@ client.once("ready", async () => {
   await persistence.log("BOT", "WhatsApp client ready ✓");
   state.myBsuid = ACCOUNTS[INSTANCE].myBsuid;
   console.log("BSUID:", state.myBsuid);
+
+  // Adicione estes ouvintes ANTES do client.initialize() para debugar a transição:
+  client.on("authenticated", async () => {
+    await persistence.log("BOT", "WhatsApp authenticated, loading session...");
+  });
+
+  // Proteção para evitar erros em encerramentos controlados
+  process.on("SIGTERM", async () => {
+    await persistence.log("BOT", "SIGTERM recebido — encerrando sessão graciosamente");
+    await client.destroy();
+    process.exit(0);
+  });
 
   // Carrega fila salva em disco
   state.todayQueue = persistence.loadQueue();
@@ -162,7 +164,7 @@ client.on("disconnected", (reason) => {
 // ─── Recebimento de mensagens ────────────────────────────────────────────────
 client.on("message_create", async (msg) => {
   const myId = client.info.wid._serialized;
-  
+
   if (!msg.fromMe || (msg.to !== state.myBsuid && msg.to !== myId)) return;
 
   const botPrefixes = ["✅", "⚠️", "📊", "🗑️", "📋", "📤", "🔺", "🛑"];

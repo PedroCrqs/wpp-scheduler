@@ -228,6 +228,14 @@ function initResetScheduler() {
   state.resetCronInitialized = true;
 }
 
+// TODO: implementar backupSessionFolder
+// async function backupSessionFolder(instance) { }
+
+// const task = cron.schedule("*/30 * * * *", async () => {
+//   if (!state.client || !clientIsReady) return;
+//   await backupSessionFolder(INSTANCE); // copia pra session-backup-{instance}-{timestamp}, mantém últimas 3
+// });
+
 module.exports = {
   generateSchedule,
   nextScheduledTime,
