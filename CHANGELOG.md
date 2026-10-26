@@ -8,6 +8,31 @@ Baseado em [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [5.1.0] - 2026-10-26
+
+### Added
+
+- **Zona Sul neighborhood classification and group routing** _(config.js)_
+  - Added `ZONA_SUL` category to `NEIGHBORHOOD_CLASSES` covering all 18 official Zona Sul neighborhoods (Botafogo, Catete, Copacabana, Cosme Velho, Flamengo, Gávea, Glória, Humaitá, Ipanema, Jardim Botânico, Lagoa, Laranjeiras, Leblon, Leme, Rocinha, São Conrado, Urca, Vidigal) plus prominent market sub-regions (Arpoador, Horto, Fonte da Saudade).
+  - Enabled routing logic so announcements in these neighborhoods are classified as `ZONA_SUL` and dispatched to targeted `SPECIFIC_GROUPS` configured for the region, in addition to `GENERAL_GROUPS`.
+  - Added placeholder slots for `ZONA_SUL` group definitions across all account instances (`account1`, `account2`, `account3`).
+
+---
+
+### Adicionado
+
+- **Classificação de bairros e direcionamento de grupos para Zona Sul** _(config.js)_
+  - Adicionada a categoria `ZONA_SUL` em `NEIGHBORHOOD_CLASSES`, cobrindo todos os 18 bairros oficiais da Zona Sul carioca (Botafogo, Catete, Copacabana, Cosme Velho, Flamengo, Gávea, Glória, Humaitá, Ipanema, Jardim Botânico, Lagoa, Laranjeiras, Leblon, Leme, Rocinha, São Conrado, Urca e Vidigal) e sub-regiões de alta relevância imobiliária (Arpoador, Horto, Fonte da Saudade).
+  - Habilitada a regra de despacho para que imóveis nestes bairros sejam classificados como `ZONA_SUL` e enviados aos `SPECIFIC_GROUPS` associados à região, além dos `GENERAL_GROUPS`.
+  - Adicionados campos/espaços reservados para grupos de `ZONA_SUL` na configuração de todas as contas (`account1`, `account2`, `account3`).
+
+---
+
+> **Commit:** `feat(config): add ZONA_SUL neighborhood class and group routing support [v5.1.0]`  
+> **Tag:** `v5.1.0`
+
+---
+
 ## [5.0.0] - 2026-07-19
 
 ### Changed

@@ -1,295 +1,254 @@
-# WhatsApp Scheduler Bot
+# WhatsApp Scheduler Bot (v5.1.0)
 
-Bot de agendamento de mensagens para WhatsApp que recebe anúncios enviados para si mesmo e os redistribui automaticamente para grupos em horários aleatorizados ao longo do dia. Possui detecção de bairro para segmentação geográfica, suporte a múltiplas contas e mecanismos anti-ban.
+Bot automatizado para WhatsApp que realiza o agendamento e disparo inteligente de anúncios imobiliários para grupos, com auto-alimentação via banco PostgreSQL compartilhado, segmentação geográfica por bairros, controle de concorrência atômico entre múltiplas instâncias e mecanismos avançados anti-ban.
 
 ---
 
 ## Sumário
 
-- [Como funciona](#como-funciona)
-- [Pré-requisitos](#pré-requisitos)
-- [Instalação](#instalação)
+- [Visão Geral e Arquitetura](#visão-geral-e-arquitetura)
+- [Como Funciona](#como-funciona)
+  - [1. Auto-Alimentação e Concorrência (PostgreSQL)](#1-auto-alimentação-e-concorrência-postgresql)
+  - [2. Grade de Agendamento (14 Slots Diários)](#2-grade-de-agendamento-14-slots-diários)
+  - [3. Disparo com Mecanismos Anti-Ban](#3-disparo-com-mecanismos-anti-ban)
+  - [4. Watchdog e Catch-up](#4-watchdog-e-catch-up)
+- [Segmentação por Bairro](#segmentação-por-bairro)
+- [Comandos no WhatsApp](#comandos-no-whatsapp)
 - [Configuração](#configuração)
+  - [Estrutura de Contas e Grupos](#estrutura-de-contas-e-grupos)
+  - [Variáveis de Ambiente](#variáveis-de-ambiente)
 - [Executando](#executando)
-- [Comandos disponíveis](#comandos-disponíveis)
-- [Segmentação por bairro](#segmentação-por-bairro)
-- [Mecanismos anti-ban](#mecanismos-anti-ban)
-- [Persistência e arquivos gerados](#persistência-e-arquivos-gerados)
-- [Arquitetura dos módulos](#arquitetura-dos-módulos)
-- [Adicionando uma nova conta](#adicionando-uma-nova-conta)
-- [Gerenciamento com PM2](#gerenciamento-com-pm2)
+  - [Execução Direta (Node.js)](#execução-direta-nodejs)
+  - [Gerenciamento com PM2](#gerenciamento-com-pm2)
+  - [Deploy com Docker](#deploy-com-docker)
+- [Persistência e Arquivos Gerados](#persistência-e-arquivos-gerados)
+- [Estrutura de Módulos](#estrutura-de-módulos)
 
 ---
 
-## Como funciona
+## Visão Geral e Arquitetura
 
-O bot opera em três etapas principais:
+O bot foi projetado para operar com **múltiplas contas/instâncias simultâneas** (`account1`, `account2`, `account3`), compartilhando uma base central de imóveis no **PostgreSQL** (`imoveis-database`):
 
-**1. Recebimento.** Você envia uma mensagem de anúncio para o seu próprio número pelo WhatsApp (chat "Você"). O bot detecta a mensagem, extrai o bairro mencionado no texto (padrão `_Bairro_` em itálico), classifica a região geográfica e enfileira a mensagem em um dos 10 slots diários.
-
-**2. Agendamento.** No momento da inicialização (ou após `!clear`), o bot gera 10 horários aleatórios distribuídos de hora em hora entre 09:00 e 18:59. Cada slot recebe um jitter de 0 a 29 minutos para que os disparos nunca caiam no exato início da hora. O cronograma é salvo em disco e sobrevive a reinicializações.
-
-**3. Disparo.** No horário de cada slot, o bot envia a mensagem para todos os grupos-alvo determinados pela classe do bairro. Os grupos recebem a mensagem em ordem embaralhada, com delays variáveis entre envios e inserção de caracteres invisíveis no texto para evitar detecção de duplicata pela Meta. Após cada disparo, o bot envia um relatório de sucesso/falha para o seu próprio número.
-
-Às 19:00 (horário de Brasília) o bot executa o reset diário: zera a fila, gera uma nova grade de horários e registra o log.
-
----
-
-## Pré-requisitos
-
-- Node.js 18 ou superior
-- npm
-- Uma conta WhatsApp ativa por instância
-- Google Chrome ou Chromium instalado (usado pelo Puppeteer internamente)
-
----
-
-## Instalação
-
-```bash
-git clone <url-do-repositorio>
-cd whatsapp-scheduler-bot
-npm install whatsapp-web.js qrcode-terminal node-cron
 ```
+                     ┌─────────────────────────────┐
+                     │   PostgreSQL (imoveis.db)   │
+                     │  - Imoveis (Disponíveis)    │
+                     │  - Dispatched_Today         │
+                     │  - Dispatch_Cycle           │
+                     └──────────────┬──────────────┘
+                                    │
+           ┌────────────────────────┼────────────────────────┐
+           ▼                        ▼                        ▼
+    ┌──────────────┐         ┌──────────────┐         ┌──────────────┐
+    │   account1   │         │   account2   │         │   account3   │
+    │ (wpp-web.js) │         │ (wpp-web.js) │         │ (wpp-web.js) │
+    └──────┬───────┘         └──────┬───────┘         └──────┬───────┘
+           │                        │                        │
+           ▼                        ▼                        ▼
+     Grupos Gerais            Grupos Gerais            Grupos Gerais
+           +                        +                        +
+   Grupos Específicos       Grupos Específicos       Grupos Específicos
+   (Barra, Recreio,         (Barra, Recreio,         (Barra, Recreio,
+    Zona Sul, JPA...)        Zona Sul, JPA...)        Zona Sul, JPA...)
+```
+
+---
+
+## Como Funciona
+
+### 1. Auto-Alimentação e Concorrência (PostgreSQL)
+
+Diferente das versões legadas que dependiam de envio manual de mensagens para si mesmo, o bot se auto-alimenta diretamente do banco de dados relacional:
+
+1. **Seleção de Imóveis:** No boot ou no reset diário, o bot consulta até 14 imóveis com `ImovelStatus = 'Disponível'`.
+2. **Ciclo Independente (`Dispatch_Cycle`):** Cada conta percorre seu próprio ciclo. Um imóvel só volta a ser enviado pela mesma conta após todos os imóveis disponíveis terem sido disparados por ela ao menos uma vez.
+3. **Reserva Atômica Diária (`Dispatched_Today`):** Para evitar que duas ou mais instâncias disparem o mesmo imóvel no mesmo dia, a reserva utiliza inserção transacional atômica:
+   ```sql
+   INSERT INTO Dispatched_Today (ImovelID, Instance, Reserved_At)
+   VALUES ($1, $2, $3)
+   ON CONFLICT (ImovelID, Reserved_At) DO NOTHING
+   RETURNING ImovelID;
+   ```
+   Caso haja corrida entre instâncias, a perdedora automaticamente busca o próximo candidato até completar seus 14 slots.
+
+### 2. Grade de Agendamento (14 Slots Diários)
+
+O robô distribui os envios ao longo do dia em **14 slots horários**, entre **09:00 e 22:59**:
+- **Horários-base:** 09:00, 10:00, 11:00, 12:00, 13:00, 14:00, 15:00, 16:00, 17:00, 18:00, 19:00, 20:00, 21:00 e 22:00.
+- **Jitter Aleatório:** Cada slot recebe um acréscimo de **0 a 45 minutos** (`minute + Math.random() * 46`).
+- **Reset Automático:** Um cron diário agendado para **00:00 (horário de Brasília)** limpa a fila do dia anterior, gera novos horários e puxa 14 novos imóveis do banco.
+
+### 3. Disparo com Mecanismos Anti-Ban
+
+Para proteger as contas de WhatsApp contra bloqueios da Meta:
+
+- **Embaralhamento (Fisher-Yates):** A cada disparo, a ordem dos grupos de destino é embaralhada para nunca repetir a mesma sequência.
+- **Delays Dinâmicos:**
+  - Intervalo de 4 a 12 segundos entre o envio para cada grupo.
+  - Pausa estendida de 15 a 35 segundos a cada 5 grupos enviados.
+- **Micro-variação Invisível:** Antes de cada envio, caracteres Unicode invisíveis (`\u200B`, `\u200C`, `\u200D` ou `\uFEFF`) são injetados aleatoriamente no texto para invalidar hashes de mensagem duplicada.
+- **Formatação Específica por Conta:** Aplicação opcional de normalizações visuais (`mergeFormat` / `mergeFormat2`) dependendo da instância.
+
+### 4. Watchdog e Catch-up
+
+Se uma instância ficar offline ou reiniciar durante o dia:
+- O **Watchdog** roda a cada verificação dentro da janela operacional (09:00 às 22:00).
+- Identifica slots que ficaram com status `waiting` após o horário programado ter passado.
+- O primeiro slot atrasado é disparado imediatamente; slots atrasados subsequentes recebem um espaçamento seguro aleatório (20 a 30 minutos).
+
+---
+
+## Segmentação por Bairro
+
+O bot analisa o campo `Descricao` do imóvel buscando a primeira ocorrência entre sublinhados (`_Bairro_`). Em seguida, classifica o bairro e define os grupos de destino:
+
+| Classe           | Bairros e Termos Reconhecidos                                                                                                                                                                          |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `ZONA_SUL`       | **18 Bairros Oficiais:** Botafogo, Catete, Copacabana, Cosme Velho, Flamengo, Gávea, Glória, Humaitá, Ipanema, Jardim Botânico, Lagoa, Laranjeiras, Leblon, Leme, Rocinha, São Conrado, Urca, Vidigal.<br>**Sub-regiões:** Arpoador, Horto, Fonte da Saudade, "Zona Sul". |
+| `BARRA`          | Barra da Tijuca, Barra                                                                                                                                                                                 |
+| `RECREIO`        | Recreio dos Bandeirantes, Recreio                                                                                                                                                                      |
+| `JACAREPAGUA`    | Jacarepaguá, Pechincha, Freguesia, Taquara, Tanque, Praça Seca, Gardênia Azul, Curicica, Anil                                                                                                           |
+| `VARGENS`        | Vargem Grande, Vargem Pequena, Vargens, Vargem                                                                                                                                                         |
+| `BARRA_OLIMPICA` | Barra Olímpica                                                                                                                                                                                         |
+| `RECREIO_BARRA`  | *(Classe exclusiva de grupos)*: Recebe anúncios classificados como `BARRA` ou `RECREIO`.                                                                                                               |
+| `GENERAL`        | Bairro não catalogado ou ausente — enviado exclusivamente para a lista geral de grupos.                                                                                                                |
+
+### Resolução de Grupos (`resolveGroups`)
+
+- **Grupos Gerais (`generalGroups`):** Recebem **todos** os anúncios disparados pela conta.
+- **Grupos Específicos (`specificGroups`):** Recebem apenas se a classe do grupo corresponder à classe do anúncio (ou se for `RECREIO_BARRA` para Barra/Recreio).
+- Duplicatas de grupos são automaticamente eliminadas via `Set`.
+
+---
+
+## Comandos no WhatsApp
+
+Envie os comandos diretamente para o seu próprio número (chat "Você"):
+
+| Comando               | Descrição                                                                                             |
+| --------------------- | ----------------------------------------------------------------------------------------------------- |
+| `!status`             | Exibe status da fila (X/14), total de disparos concluídos, próximo horário e listagem detalhada.     |
+| `!reset`              | Executa reset manual imediato: limpa a fila, gera novos horários e carrega 14 imóveis do PostgreSQL. |
+| `!clear`              | Limpa a fila e cronograma manualmente sem recarregar do banco.                                        |
+| `!fire`               | Dispara imediatamente o próximo anúncio pendente (`waiting`).                                         |
+| `!fire <n>`           | Força o disparo manual do slot número `n` (de 1 a 14).                                                |
+| `!groups`             | Lista todos os grupos dos quais a conta participa, com nomes e seus respectivos IDs (`@g.us`).        |
+| `!clearReservations`  | Remove as reservas da data de hoje na tabela `Dispatched_Today` (útil para testes de concorrência).   |
+| `!stopMidnightReset`  | Desativa o agendador de reset automático da meia-noite (00:00).                                       |
 
 ---
 
 ## Configuração
 
-Toda a configuração fica em `config.js`. Edite o objeto `ACCOUNTS` para cadastrar suas contas e grupos.
+O arquivo central de configuração é o [`src/config.js`](file:///home/pedrocrqs/main-project-database/wpp-scheduler/src/config.js).
 
-### Estrutura de uma conta
+### Estrutura de Contas e Grupos
 
-```js
-// config.js
+```javascript
+// src/config.js
 const ACCOUNTS = {
   account1: {
-    // BSUID (@lid) da conta — obtido ao enviar uma mensagem para si mesmo após a primeira conexão)
     myBsuid: "228707713171512@lid",
-
-    // Grupos que recebem TODOS os anúncios, independente do bairro
     generalGroups: [
       "5521970332124-1509473137@g.us",
+      "120363154129227809@g.us",
       // ...
     ],
-
-    // Grupos que recebem apenas anúncios de uma classe geográfica específica
     specificGroups: [
       { id: "5521970445787-1605316109@g.us", class: "BARRA" },
+      { id: "5521997856010-1512486103@g.us", class: "ZONA_SUL" },
+      { id: "120363204376147970@g.us", class: "ZONA_SUL" },
       { id: "120363038446694631@g.us", class: "RECREIO" },
-      { id: "5521999014301-1584277277@g.us", class: "RECREIO_BARRA" },
       // ...
     ],
   },
+  // account2, account3...
 };
 ```
 
-### Obtendo IDs de grupos
+### Variáveis de Ambiente
 
-Use o comando `!groups` para listar todos os grupos dos quais o número conectado faz parte, com seus respectivos IDs.
+- `DATABASE_URL`: String de conexão com o PostgreSQL (Padrão: `postgresql://postgres:postgres@localhost:5432/imoveis`).
 
-### Obtendo e configurando o ID próprio
-
-...
+---
 
 ## Executando
 
-Cada conta é uma instância independente. Passe o nome da conta como argumento:
+### Execução Direta (Node.js)
 
 ```bash
-# Conta 1
+# Executa especificando a conta como argumento
 node index.js account1
 
-# Conta 2
-node index.js account2
+# Em modo de desenvolvimento com auto-reload
+node --watch index.js account1
 ```
 
-No primeiro acesso, um QR Code será exibido no terminal. Escaneie-o com o WhatsApp da conta correspondente. A sessão é salva localmente via `LocalAuth` e não precisará ser refeita em próximas inicializações.
+No primeiro acesso, escaneie o QR Code exibido no terminal. A sessão será salva em `data/account1/sessions` via `LocalAuth`.
 
----
+### Gerenciamento com PM2
 
-## Comandos disponíveis
+Recomendado para produção:
 
-Envie os comandos para o seu próprio número (chat "Você") no WhatsApp.
+```bash
+# Iniciar as instâncias configuradas
+pm2 start index.js --name "wpp-account1" -- account1
+pm2 start index.js --name "wpp-account2" -- account2
+pm2 start index.js --name "wpp-account3" -- account3
 
-| Comando     | Descrição                                                                                                    |
-| ----------- | ------------------------------------------------------------------------------------------------------------ |
-| `!status`   | Exibe o estado atual: tamanho da fila, disparos feitos, próximo horário e status individual de cada mensagem |
-| `!clear`    | Limpa a fila, zera os contadores e gera um novo cronograma de horários                                       |
-| `!groups`   | Lista todos os grupos dos quais a conta faz parte, com nome e ID                                             |
-| `!fire`     | Dispara imediatamente o próximo slot com status `waiting`                                                    |
-| `!fire <n>` | Dispara imediatamente o slot de número `n` (1-based)                                                         |
-
-### Exemplo de saída do `!status`
-
-```
-📊 Bot Status
-
-📨 Queue: 3/10
-✅ Dispatches done today: 1/10
-⏳ Next dispatch: 10:24
-
-Queued messages:
-1. [sent]    *• Cobertura - _Barra da Tijuca_* - _3 dorms..._
-2. [waiting] *• Apartamento - _Recreio_* - _2 dorms..._
-3. [waiting] *• Casa - _Jacarepaguá_* - _4 dorms..._
+# Salvar processos para inicialização automática no boot do sistema
+pm2 save
+pm2 startup
 ```
 
----
+### Deploy com Docker
 
-## Segmentação por bairro
+O projeto possui um [`Dockerfile`](file:///home/pedrocrqs/main-project-database/wpp-scheduler/Dockerfile) baseado em `node:18-slim` com Chromium instalado via sistema operacional:
 
-O bot detecta automaticamente o bairro de cada anúncio buscando o padrão de itálico `_Bairro_` no corpo da mensagem. Com base no bairro identificado, a mensagem é classificada em uma das seguintes classes:
+```bash
+# Build da imagem
+docker build -t wpp-scheduler .
 
-| Classe           | Bairros reconhecidos                                                                          |
-| ---------------- | --------------------------------------------------------------------------------------------- |
-| `JACAREPAGUA`    | Jacarepaguá, Pechincha, Freguesia, Taquara, Tanque, Praça Seca, Gardênia Azul, Curicica, Anil |
-| `BARRA`          | Barra da Tijuca, Barra                                                                        |
-| `RECREIO`        | Recreio dos Bandeirantes, Recreio                                                             |
-| `VARGENS`        | Vargem Grande, Vargem Pequena, Vargens, Vargem                                                |
-| `BARRA_OLIMPICA` | Barra Olímpica                                                                                |
-| `RECREIO_BARRA`  | _(definida pelos grupos, não pelo bairro — ver abaixo)_                                       |
-| `GENERAL`        | Bairro não identificado — envia apenas para grupos gerais                                     |
-
-### Lógica de resolução de grupos
-
-Para cada anúncio, o bot monta a lista de destinos da seguinte forma:
-
-- **Sempre inclui** todos os `generalGroups` da conta.
-- **Adiciona** os `specificGroups` cuja `class` seja igual à classe do anúncio.
-- **Grupos `RECREIO_BARRA`** são incluídos quando o anúncio é de classe `BARRA` ou `RECREIO` — são grupos que recebem as duas regiões.
-- IDs duplicados são removidos automaticamente via `Set`.
-
-Se o bairro não for identificado (classe `GENERAL`), nenhum grupo específico é adicionado — apenas os grupos gerais recebem a mensagem.
+# Execução com montagem dos volumes de persistência
+docker run -d \
+  --name wpp-acc1 \
+  -e DATABASE_URL="postgresql://user:password@host:5432/imoveis" \
+  -v $(pwd)/data:/app/data \
+  wpp-scheduler account1
+```
 
 ---
 
-## Mecanismos anti-ban
+## Persistência e Arquivos Gerados
 
-O bot implementa três camadas de proteção contra suspensão de conta:
-
-**Ordem de envio aleatória.** A lista de grupos-alvo é embaralhada a cada disparo usando o algoritmo Fisher-Yates imparcial, de forma que os grupos nunca recebem mensagens na mesma sequência.
-
-**Delays variáveis entre envios.** Após cada mensagem enviada, o bot aguarda um tempo aleatório antes de prosseguir para o próximo grupo:
-
-- Entre envios individuais: 4 a 12 segundos
-- A cada 5 grupos enviados: pausa maior de 15 a 35 segundos
-
-**Micro-variação de texto.** Antes de cada envio, um caractere Unicode invisível (`\u200B`, `\u200C`, `\u200D` ou `\uFEFF`) é inserido em uma posição aleatória do corpo da mensagem. Isso impede que a Meta identifique as mensagens como cópias idênticas sendo enviadas em massa.
-
----
-
-## Persistência e arquivos gerados
-
-Todos os dados de runtime ficam isolados do código-fonte dentro de `data/`, criada automaticamente na primeira execução:
+Os dados de cada instância são isolados em pastas próprias dentro de `data/`:
 
 ```
 data/
-├── sessions/
-│   ├── session-scheduler-bot-account1/   ← sessão WhatsApp (LocalAuth)
-│   └── session-scheduler-bot-account2/
-├── queues/
-│   ├── queue-account1.json
-│   └── queue-account2.json
-├── schedules/
-│   ├── schedule-account1.json
-│   └── schedule-account2.json
-└── logs/
-    ├── log-account1.json
-    └── log-account2.json
+└── account1/
+    ├── sessions/    # Sessões do WhatsApp Web (LocalAuth)
+    ├── queues/      # Fila diária com status (queue-account1.json)
+    ├── schedules/   # Horários dos 14 slots do dia (schedule-account1.json)
+    └── logs/        # Log rotativo com os últimos 500 eventos (log-account1.json)
 ```
-
-| Arquivo                               | Conteúdo                                                                              |
-| ------------------------------------- | ------------------------------------------------------------------------------------- |
-| `queues/queue-{instância}.json`       | Fila do dia atual com status de cada mensagem (`waiting`, `sending`, `sent`, `error`) |
-| `schedules/schedule-{instância}.json` | Cronograma de horários do dia atual (10 slots HH:MM)                                  |
-| `logs/log-{instância}.json`           | Últimas 500 entradas do log de atividade (tipo, detalhe e timestamp)                  |
-| `sessions/`                           | Sessão de autenticação do WhatsApp — não precisa escanear o QR Code a cada restart    |
-
-A fila e o cronograma sobrevivem a reinicializações dentro do mesmo dia. Na inicialização, o bot verifica se há mensagens em `waiting` com horário já passado e as dispara imediatamente (mecanismo de catch-up).
-
-No reset diário das 19:00 ou ao executar `!clear`, fila e cronograma são regenerados. A sessão **nunca** é apagada pelo bot.
-
-> **Dica:** adicione `data/` ao `.gitignore` para evitar que sessões, filas e logs sejam commitados acidentalmente.
 
 ---
 
-## Arquitetura dos módulos
+## Estrutura de Módulos
 
 ```
-index.js          — ponto de entrada: inicializa o cliente e registra o cron de reset diário
-│
-├── config.js     — constantes: INSTANCE, ACCOUNTS, paths de arquivo, NEIGHBORHOOD_CLASSES
-├── state.js      — estado mutável centralizado (fila, schedule, flags de disparo)
-│
-├── client.js     — inicialização do whatsapp-web.js, handlers de eventos (qr, ready,
-│                   message_create) e roteamento de comandos
-│
-├── commands.js   — implementação de !status, !clear, !groups, !fire
-│
-├── scheduler.js  — geração de horários, agendamento via node-cron, reset diário
-│
-├── dispatcher.js — fila sequencial de disparos (pendingDispatches + while loop),
-│                   execução de cada slot com anti-ban
-│
-├── neighborhood.js — extração de bairro via regex, classificação geográfica,
-│                     resolução da lista de grupos-alvo
-│
-├── persistence.js  — leitura e escrita de fila, schedule e log em disco
-│
-└── helpers.js    — sleep(), shuffle() Fisher-Yates, microVary() com chars invisíveis
-```
-
-O estado da aplicação trafega inteiramente por `state.js` — nenhum módulo mantém variáveis globais próprias. Dependências circulares entre `dispatcher` ↔ `scheduler` ↔ `client` são resolvidas com imports lazy (dentro das funções que os utilizam).
-
----
-
-## Adicionando uma nova conta
-
-1. Adicione uma entrada em `ACCOUNTS` dentro de `config.js`:
-
-```js
-account3: {
-  myBsuid: "",           // preencher após o primeiro login
-  generalGroups: [
-    "ID_DO_GRUPO@g.us",
-    // ...
-  ],
-  specificGroups: [
-    { id: "ID_DO_GRUPO@g.us", class: "BARRA" },
-    // ...
-  ],
-},
-```
-
-2. Inicie a instância e escaneie o QR Code:
-
-```bash
-node index.js account3
-```
-
-3. Copie o valor de `BSUID` exibido no console e preencha `myBsuid` no config.
-
----
-
-## Gerenciamento com PM2
-
-Para manter as instâncias rodando em background e com reinício automático:
-
-```bash
-npm install -g pm2
-
-# Iniciar as instâncias
-pm2 start index.js --name "bot-account1" -- account1
-pm2 start index.js --name "bot-account2" -- account2
-
-# Salvar e configurar para iniciar com o sistema
-pm2 save
-pm2 startup
-
-# Comandos úteis
-pm2 list                        # status de todas as instâncias
-pm2 logs bot-account1           # logs em tempo real
-pm2 restart bot-account1        # reiniciar uma instância
-pm2 stop bot-account1           # parar uma instância
+index.js              Ponto de entrada: inicialização e listeners de ciclo de vida
+src/
+├── config.js         Configurações, contas, mapeamento de grupos e classes de bairros
+├── db.js             Pool de conexão com PostgreSQL (pg.Pool)
+├── auto-scheduler.js Reserva atômica diária e sincronização com o banco
+├── scheduler.js      Geração dos 14 horários com jitter, watchdog e reset diário
+├── dispatcher.js     Motor de despacho sequencial com anti-ban (delays, micro-variação)
+├── neighborhood.js   Extração de bairro via regex, classificação e resolução de grupos
+├── client.js         Instanciação do whatsapp-web.js e roteador de mensagens/comandos
+├── commands.js       Tratamento dos comandos (!status, !reset, !fire, !clear, etc.)
+├── persistence.js    Persistência atômica da fila, agendamento e logs em JSON
+├── helpers.js        Utilitários (sleep, Fisher-Yates shuffle, microVary invisível)
+└── state.js          Estado global compartilhado em runtime
 ```

@@ -66,6 +66,8 @@ const ACCOUNTS = {
       { id: "120363020895251858@g.us", class: "BARRA_OLIMPICA" },
       { id: "5521970445787-1605316109@g.us", class: "BARRA_OLIMPICA" },
       { id: "120363182260841786@g.us", class: "BARRA_OLIMPICA" },
+      { id: "5521997856010-1512486103@g.us", class: "ZONA_SUL" },
+      { id: "120363204376147970@g.us", class: "ZONA_SUL" },
     ],
   },
   account2: {
@@ -138,6 +140,8 @@ const ACCOUNTS = {
       { id: "120363020895251858@g.us", class: "BARRA_OLIMPICA" },
       { id: "5521970445787-1605316109@g.us", class: "BARRA_OLIMPICA" },
       { id: "120363182260841786@g.us", class: "BARRA_OLIMPICA" },
+      { id: "5521997856010-1512486103@g.us", class: "ZONA_SUL" },
+      { id: "120363204376147970@g.us", class: "ZONA_SUL" },
     ],
   },
   account3: {
@@ -161,6 +165,8 @@ const ACCOUNTS = {
       { id: "120363204631755901@g.us", class: "VARGENS" },
       { id: "5521965702281-1560781419@g.us", class: "VARGENS" },
       { id: "120363166499761770@g.us", class: "JACAREPAGUA" },
+      { id: "5521997856010-1512486103@g.us", class: "ZONA_SUL" },
+      { id: "120363204376147970@g.us", class: "ZONA_SUL" },
     ],
   },
 };
@@ -196,6 +202,37 @@ const NEIGHBORHOOD_CLASSES = {
     // deixe vazio — essa classe é definida pelos grupos,
     // não pelo bairro. Grupos RECREIO_BARRA recebem
     // tanto anúncios de BARRA quanto de RECREIO.
+  ],
+  ZONA_SUL: [
+    // 18 bairros oficiais da Zona Sul (Prefeitura do Rio / IPP)
+    "botafogo",
+    "catete",
+    "copacabana",
+    "cosme velho",
+    "flamengo",
+    "gávea",
+    "gavea",
+    "glória",
+    "gloria",
+    "humaitá",
+    "humaita",
+    "ipanema",
+    "jardim botânico",
+    "jardim botanico",
+    "lagoa",
+    "laranjeiras",
+    "leblon",
+    "leme",
+    "rocinha",
+    "são conrado",
+    "sao conrado",
+    "urca",
+    "vidigal",
+    // Sub-regiões e referências frequentes do mercado imobiliário
+    "arpoador",
+    "horto",
+    "fonte da saudade",
+    "zona sul",
   ],
 };
 
