@@ -5,10 +5,12 @@ const INSTANCE = process.argv[2] || "account1";
 
 const DATA_DIR = path.join(process.cwd(), "data");
 
-const QUEUES_DIR = path.join(DATA_DIR, "queues");
-const SCHEDULES_DIR = path.join(DATA_DIR, "schedules");
-const LOGS_DIR = path.join(DATA_DIR, "logs");
-const SESSIONS_DIR = path.join(DATA_DIR, "sessions");
+const INSTANCE_DIR = path.join(DATA_DIR, INSTANCE);
+
+const QUEUES_DIR = path.join(INSTANCE_DIR, "queues");
+const SCHEDULES_DIR = path.join(INSTANCE_DIR, "schedules");
+const LOGS_DIR = path.join(INSTANCE_DIR, "logs");
+const SESSIONS_DIR = path.join(INSTANCE_DIR, "sessions");
 
 [QUEUES_DIR, SCHEDULES_DIR, LOGS_DIR, SESSIONS_DIR].forEach((dir) =>
   fs.mkdirSync(dir, { recursive: true }),
