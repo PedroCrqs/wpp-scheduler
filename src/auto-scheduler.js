@@ -71,7 +71,7 @@ async function getAvailableForCycle(client, instance) {
   ]);
   await persistence.log(
     "AUTO-SCHEDULER",
-    `Cycle completed for ${instance} — resetting.`,
+    `Ciclo concluído para ${instance} — reiniciando.`,
   );
 
   ({ rows } = await client.query(
@@ -136,12 +136,12 @@ async function markAsSentInCycle(imovelIds, instance) {
 
     await persistence.log(
       "AUTO-SCHEDULER",
-      `Cycle marked for IDs [${imovelIds.join(", ")}] (${instance})`,
+      `Ciclo registrado para os IDs [${imovelIds.join(", ")}] (${instance})`,
     );
   } catch (err) {
     await persistence.log(
       "AUTO-SCHEDULER",
-      `markAsSentInCycle error: ${err.message}`,
+      `Erro em markAsSentInCycle: ${err.message}`,
     );
   }
 }
@@ -168,7 +168,7 @@ async function fetchAndReserveAnnouncements(limit = 14) {
       await client.query("COMMIT");
       await persistence.log(
         "AUTO-SCHEDULER",
-        `No candidates for ${INSTANCE} today.`,
+        `Nenhum candidato para ${INSTANCE} hoje.`,
       );
       return [];
     }
@@ -192,7 +192,7 @@ async function fetchAndReserveAnnouncements(limit = 14) {
         reserved = reserved.concat(complement);
         await persistence.log(
           "AUTO-SCHEDULER",
-          `Race condition: +${complement.length} complemented.`,
+          `Condição de corrida: +${complement.length} complementado(s).`,
         );
       }
     }
@@ -201,14 +201,14 @@ async function fetchAndReserveAnnouncements(limit = 14) {
       await client.query("COMMIT");
       await persistence.log(
         "AUTO-SCHEDULER",
-        "No properties reserved — all taken today.",
+        "Nenhum imóvel reservado — todos já foram selecionados hoje.",
       );
       return [];
     }
 
     await persistence.log(
       "AUTO-SCHEDULER",
-      `${reserved.length} property(ies) reserved for ${INSTANCE} (IDs: ${reserved.join(", ")})`,
+      `${reserved.length} imóvel(is) reservado(s) para ${INSTANCE} (IDs: ${reserved.join(", ")})`,
     );
 
     const { rows } = await client.query(
@@ -232,7 +232,7 @@ async function fetchAndReserveAnnouncements(limit = 14) {
         receivedAt: new Date().toISOString(),
         dispatchedAt: null,
         status: "waiting",
-        neighborhood: neighborhood || "unidentified",
+        neighborhood: neighborhood || "não identificado",
         class: announcementCls,
         targetGroups,
         sourceImovelID: row.imovelid,
@@ -242,7 +242,7 @@ async function fetchAndReserveAnnouncements(limit = 14) {
     await client.query("ROLLBACK");
     await persistence.log(
       "AUTO-SCHEDULER",
-      `Error fetching announcements: ${err.message}`,
+      `Erro ao buscar anúncios: ${err.message}`,
     );
     return [];
   } finally {
@@ -262,13 +262,13 @@ async function pruneOldReservations() {
     if (result.rowCount > 0) {
       await persistence.log(
         "AUTO-SCHEDULER",
-        `${result.rowCount} old reservation(s) removed.`,
+        `${result.rowCount} reserva(s) antiga(s) removida(s).`,
       );
     }
   } catch (err) {
     await persistence.log(
       "AUTO-SCHEDULER",
-      `Error pruning reservations: ${err.message}`,
+      `Erro ao limpar reservas antigas: ${err.message}`,
     );
   }
 }
@@ -283,13 +283,13 @@ async function clearTodayReservations() {
     if (result.rowCount > 0) {
       await persistence.log(
         "AUTO-SCHEDULER",
-        `${result.rowCount} today's reservation(s) cleared.`,
+        `${result.rowCount} reserva(s) de hoje limpa(s).`,
       );
     }
   } catch (err) {
     await persistence.log(
       "AUTO-SCHEDULER",
-      `Error clearing today's reservations: ${err.message}`,
+      `Erro ao limpar reservas de hoje: ${err.message}`,
     );
   }
 }

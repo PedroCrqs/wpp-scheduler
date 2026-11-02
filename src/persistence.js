@@ -17,7 +17,7 @@ async function log(type, detail) {
     if (logs.length > 500) logs = logs.slice(0, 500);
     await fsPromises.writeFile(LOG_PATH, JSON.stringify(logs, null, 2));
   } catch (err) {
-    console.error("[LOG ERROR]", err.message);
+    console.error("[ERRO DE LOG]", err.message);
   }
 }
 
@@ -90,7 +90,7 @@ async function recoverSendingSlots() {
     await saveQueue();
     await log(
       "RECOVERY",
-      `Slots reset from "sending" → "waiting" on boot: [${recovered.join(", ")}]`,
+      `Slots redefinidos de "sending" → "waiting" na inicialização: [${recovered.join(", ")}]`,
     );
   }
   return recovered;

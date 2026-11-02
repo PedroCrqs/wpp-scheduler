@@ -126,16 +126,17 @@ O bot analisa o campo `Descricao` do imóvel buscando a primeira ocorrência ent
 
 Envie os comandos diretamente para o seu próprio número (chat "Você"):
 
-| Comando               | Descrição                                                                                             |
-| --------------------- | ----------------------------------------------------------------------------------------------------- |
-| `!status`             | Exibe status da fila (X/14), total de disparos concluídos, próximo horário e listagem detalhada.     |
-| `!reset`              | Executa reset manual imediato: limpa a fila, gera novos horários e carrega 14 imóveis do PostgreSQL. |
-| `!clear`              | Limpa a fila e cronograma manualmente sem recarregar do banco.                                        |
-| `!fire`               | Dispara imediatamente o próximo anúncio pendente (`waiting`).                                         |
-| `!fire <n>`           | Força o disparo manual do slot número `n` (de 1 a 14).                                                |
-| `!groups`             | Lista todos os grupos dos quais a conta participa, com nomes e seus respectivos IDs (`@g.us`).        |
-| `!clearReservations`  | Remove as reservas da data de hoje na tabela `Dispatched_Today` (útil para testes de concorrência).   |
-| `!stopMidnightReset`  | Desativa o agendador de reset automático da meia-noite (00:00).                                       |
+| Comando | Aliases | Descrição |
+| --- | --- | --- |
+| `!status` | — | Exibe status da fila (X/14), total de disparos concluídos, próximo horário e listagem detalhada. |
+| `!reiniciar` | `!reset` | Executa reset manual imediato: limpa a fila, gera novos horários e carrega 14 imóveis do PostgreSQL. |
+| `!reiniciar --reagendar` | `!reset --reschedule` | Executa reset manual gerando novos horários no cronograma. |
+| `!limpar` | `!clear` | Limpa a fila e cronograma manualmente sem recarregar do banco. |
+| `!disparar` | `!fire` | Dispara imediatamente o próximo anúncio pendente (`waiting`). |
+| `!disparar <n>` | `!fire <n>` | Força o disparo manual do slot número `n` (de 1 a 14). |
+| `!grupos` | `!groups` | Lista todos os grupos dos quais a conta participa, com nomes e seus respectivos IDs (`@g.us`). |
+| `!limpar-reservas` | `!clearReservations`, `!limparreservas` | Remove as reservas da data de hoje na tabela `Dispatched_Today` (útil para testes de concorrência). |
+| `!parar-reinicio` | `!pararreinicio`, `!stopreset`, `!stopMidnightReset` | Desativa o agendador de reset automático da meia-noite (00:00). |
 
 ---
 
@@ -247,7 +248,7 @@ src/
 ├── dispatcher.js     Motor de despacho sequencial com anti-ban (delays, micro-variação)
 ├── neighborhood.js   Extração de bairro via regex, classificação e resolução de grupos
 ├── client.js         Instanciação do whatsapp-web.js e roteador de mensagens/comandos
-├── commands.js       Tratamento dos comandos (!status, !reset, !fire, !clear, etc.)
+├── commands.js       Tratamento dos comandos (!status, !reiniciar, !disparar, !limpar, etc.)
 ├── persistence.js    Persistência atômica da fila, agendamento e logs em JSON
 ├── helpers.js        Utilitários (sleep, Fisher-Yates shuffle, microVary invisível)
 └── state.js          Estado global compartilhado em runtime

@@ -172,7 +172,7 @@ const ACCOUNTS = {
 };
 
 if (!ACCOUNTS[INSTANCE]) {
-  console.error(`❌ Instance "${INSTANCE}" not found in ACCOUNTS.`);
+  console.error(`❌ Instância "${INSTANCE}" não encontrada em ACCOUNTS.`);
   process.exit(1);
 }
 

@@ -9,25 +9,34 @@ const {
 const { queueDispatch } = require("./dispatcher");
 const { clearTodayReservations } = require("./auto-scheduler");
 
+const STATUS_LABELS = {
+  waiting: "aguardando",
+  sending: "enviando",
+  sent: "enviado",
+  error: "erro",
+};
+
 async function handleReset(msg, reschedule = false) {
   const loaded = await dailyReset(reschedule);
 
   await msg.reply(
-    `🗑️ *Manual reset executed!*\n\n` +
-      `📦 ${loaded} ad(s) automatically loaded from the database.\n` +
-      `⏰ New schedule: ${state.SCHEDULE.join(", ")}`,
+    `🗑️ *Reset manual executado!*\n\n` +
+      `📦 ${loaded} anúncio(s) carregados automaticamente do banco de dados.\n` +
+      `⏰ Novo cronograma: ${state.SCHEDULE.join(", ")}`,
   );
 }
 
 async function handleStatus(msg) {
   const status =
-    `📊 *Bot Status*\n\n` +
-    `📨 Queue: ${state.todayQueue.length}/14\n` +
-    `✅ Dispatches done today: ${state.dispatchesDone}/${state.SCHEDULE.length}\n` +
-    `⏳ Next dispatch: ${nextScheduledTime()}\n\n` +
-    `_Queued messages:_\n` +
+    `📊 *Status do Bot*\n\n` +
+    `📨 Fila: ${state.todayQueue.length}/14\n` +
+    `✅ Disparos realizados hoje: ${state.dispatchesDone}/${state.SCHEDULE.length}\n` +
+    `⏳ Próximo disparo: ${nextScheduledTime()}\n\n` +
+    `_Mensagens na fila:_\n` +
     state.todayQueue
-      .map((m, i) => `${i + 1}. [${m.status}] ${m.preview}`)
+      .map(
+        (m, i) => `${i + 1}. [${STATUS_LABELS[m.status] || m.status}] ${m.preview}`,
+      )
       .join("\n");
   await msg.reply(status);
 }
@@ -43,8 +52,8 @@ async function handleClear(msg) {
   persistence.saveSchedule();
   await persistence.saveQueue();
   await scheduleDispatches();
-  await msg.reply("🗑️ Queue cleared successfully.");
-  await persistence.log("COMMAND", "Queue manually cleared");
+  await msg.reply("🗑️ Fila limpa com sucesso.");
+  await persistence.log("COMMAND", "Fila limpa manualmente");
 }
 
 async function handleGroups(client, msg) {
@@ -53,7 +62,7 @@ async function handleGroups(client, msg) {
   const list = groups
     .map((g) => `• ${g.name}\n  ID: \`${g.id._serialized}\``)
     .join("\n\n");
-  await msg.reply(`📋 *Available groups:*\n\n${list}`);
+  await msg.reply(`📋 *Grupos disponíveis:*\n\n${list}`);
 }
 
 async function handleFire(msg) {
@@ -66,7 +75,7 @@ async function handleFire(msg) {
     const n = parseInt(parts[1], 10);
     if (isNaN(n) || n < 1 || n > state.todayQueue.length) {
       await msg.reply(
-        `⚠️ Invalid slot. Use *!fire* or *!fire <1–${state.todayQueue.length}>*.`,
+        `⚠️ Slot inválido. Use *!disparar* ou *!disparar <1–${state.todayQueue.length}>*.`,
       );
       return;
     }
@@ -74,30 +83,30 @@ async function handleFire(msg) {
   }
 
   if (targetIndex === -1 || targetIndex === undefined || targetIndex === null) {
-    await msg.reply("⚠️ No pending messages in queue.");
+    await msg.reply("⚠️ Nenhuma mensagem pendente na fila.");
     return;
   }
 
   const target = state.todayQueue[targetIndex];
   if (!target) {
-    await msg.reply(`⚠️ Slot ${targetIndex + 1} not found in queue.`);
+    await msg.reply(`⚠️ Slot ${targetIndex + 1} não encontrado na fila.`);
     return;
   }
   if (target.status === "sent") {
-    await msg.reply(`⚠️ Slot ${targetIndex + 1} already sent.`);
+    await msg.reply(`⚠️ Slot ${targetIndex + 1} já foi enviado.`);
     return;
   }
   if (target.status === "sending") {
     await msg.reply(
-      `⚠️ Slot ${targetIndex + 1} is currently being dispatched.`,
+      `⚠️ Slot ${targetIndex + 1} está sendo disparado no momento.`,
     );
     return;
   }
 
-  await msg.reply(`📤 Firing slot ${targetIndex + 1} now...`);
+  await msg.reply(`📤 Disparando slot ${targetIndex + 1} agora...`);
   await persistence.log(
     "COMMAND",
-    `Manual fire requested for slot ${targetIndex + 1}`,
+    `Disparo manual solicitado para o slot ${targetIndex + 1}`,
   );
   queueDispatch(targetIndex);
 }
@@ -106,13 +115,13 @@ async function handleStopMidnightReset(msg) {
   state.resetCronTask.destroy();
   state.resetCronTask = null;
   state.resetCronInitialized = false;
-  await msg.reply("🛑 Daily midnight reset stopped.");
-  await persistence.log("COMMAND", "Midnight reset cron manually stopped");
+  await msg.reply("🛑 Reset diário da meia-noite interrompido.");
+  await persistence.log("COMMAND", "Cron de reset da meia-noite interrompido manualmente");
 }
 
 async function handleResetReservedToday(msg) {
   await clearTodayReservations();
-  await msg.reply("🗑️ Today reservations cleared successfully.");
+  await msg.reply("🗑️ Reservas de hoje limpas com sucesso.");
 }
 
 module.exports = {

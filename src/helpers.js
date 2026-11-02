@@ -1,4 +1,4 @@
-// anti-ban helpers
+// Funções auxiliares anti-bloqueio (anti-ban)
 
 const INVISIBLE_CHARS = ["\u200B", "\u200C", "\u200D", "\uFEFF"];
 

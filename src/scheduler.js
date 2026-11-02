@@ -45,7 +45,7 @@ function generateSchedule() {
 function nextScheduledTime() {
   const current = nowSP();
   const next = state.SCHEDULE.find((h) => h > current);
-  return next || "None today (all passed)";
+  return next || "Nenhum hoje (todos concluídos)";
 }
 
 async function scheduleDispatches() {
@@ -63,7 +63,7 @@ async function scheduleDispatches() {
       async () => {
         await persistence.log(
           "CRON",
-          `Trigger for slot ${index + 1} (${time})`,
+          `Disparo agendado para o slot ${index + 1} (${time})`,
         );
         queueDispatch(index);
       },
@@ -73,7 +73,7 @@ async function scheduleDispatches() {
     state.slotCronTasks.push(task);
   });
 
-  await persistence.log("CRON", `${state.SCHEDULE.length} slots scheduled ✓`);
+  await persistence.log("CRON", `${state.SCHEDULE.length} slots agendados ✓`);
 }
 
 async function autoFeedQueue() {
@@ -87,7 +87,7 @@ async function autoFeedQueue() {
   if (entries.length === 0) {
     await persistence.log(
       "AUTO-SCHEDULER",
-      "Queue is empty — no announcements available.",
+      "Fila vazia — nenhum anúncio disponível.",
     );
     return 0;
   }
@@ -102,14 +102,14 @@ async function autoFeedQueue() {
 
   await persistence.log(
     "AUTO-SCHEDULER",
-    `Queue populated with ${entries.length} ad(s).`,
+    `Fila preenchida com ${entries.length} anúncio(s).`,
   );
 
   return entries.length;
 }
 
 async function dailyReset(reschedule = true) {
-  await persistence.log("RESET", "Daily reset triggered");
+  await persistence.log("RESET", "Reset diário acionado");
 
   if (state.resetCronTask) {
     state.resetCronTask.destroy();
@@ -135,7 +135,7 @@ async function dailyReset(reschedule = true) {
 
   await persistence.log(
     "RESET",
-    `Queue cleared | New schedule: ${state.SCHEDULE.join(", ")} | ${loaded} ad(s) loaded`,
+    `Fila limpa | Novo cronograma: ${state.SCHEDULE.join(", ")} | ${loaded} anúncio(s) carregados`,
   );
 
   await scheduleDispatches();
@@ -177,14 +177,14 @@ async function checkMissedDispatches() {
     if (isFirstMissed) {
       persistence.log(
         "WATCHDOG",
-        `Slot ${index + 1} (${time}) overdue — firing immediately`,
+        `Slot ${index + 1} (${time}) atrasado — disparando imediatamente`,
       );
       queueDispatch(index);
     } else {
       const delayMinutes = Math.floor(Math.random() * 11) + 20;
       persistence.log(
         "WATCHDOG",
-        `Slot ${index + 1} (${time}) overdue — scheduling in ${delayMinutes}min`,
+        `Slot ${index + 1} (${time}) atrasado — agendando em ${delayMinutes}min`,
       );
       setTimeout(
         () => {
@@ -192,7 +192,7 @@ async function checkMissedDispatches() {
           if (currentMsg && currentMsg.status === "waiting") {
             persistence.log(
               "WATCHDOG",
-              `Slot ${index + 1} (${time}) firing after delay`,
+              `Slot ${index + 1} (${time}) disparando após atraso programado`,
             );
             queueDispatch(index);
           }
@@ -209,15 +209,15 @@ function initResetScheduler() {
   const task = cron.schedule(
     "0 0 * * *",
     async () => {
-      await persistence.log("RESET", "Daily reset triggered by cron (00:00)");
+      await persistence.log("RESET", "Reset diário acionado pelo cron (00:00)");
       const loaded = await dailyReset();
       try {
         const myId = state.client.info.wid._serialized;
         await state.client.sendMessage(
           myId,
-          `🗑️ *Daily Reset Triggered!*\n\n` +
-            `📦 ${loaded} anúncio(s) carregados automaticamente do banco.\n` +
-            `⏰ New schedule: ${state.SCHEDULE.join(", ")}`,
+          `🗑️ *Reset Diário Acionado!*\n\n` +
+            `📦 ${loaded} anúncio(s) carregados automaticamente do banco de dados.\n` +
+            `⏰ Novo cronograma: ${state.SCHEDULE.join(", ")}`,
         );
       } catch {}
     },
