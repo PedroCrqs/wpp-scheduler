@@ -11,3 +11,5 @@ Thumbs.db
 queue*.json
 schedule*.json
 sessions/
+accounts.json
+data/accounts.json

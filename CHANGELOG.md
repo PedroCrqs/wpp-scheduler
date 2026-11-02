@@ -8,16 +8,23 @@ Baseado em [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [5.2.0] - Unreleased
+## [5.2.0] - 2026-11-02
 
 ### Added
 
 - **Portuguese WhatsApp bot commands** _(client.js, commands.js, README.md)_
   - Introduced primary commands in Portuguese (`!limpar`, `!reiniciar`, `!disparar`, `!grupos`, `!limpar-reservas`, `!parar-reinicio`, with flag `--reagendar`).
   - Preserved backward-compatible aliases for legacy English commands (`!clear`, `!reset`, `!fire`, `!groups`, `!clearReservations`, `!stopreset`, `!stopMidnightReset`).
+- **Secure and unversioned account configuration** _(config.js, accounts.example.json, .gitignore, README.md)_
+  - Added support for loading account configurations from `ACCOUNTS_JSON` environment variable, custom path via `ACCOUNTS_CONFIG_PATH`, or local unversioned `accounts.json` / `data/accounts.json`.
+  - Added `accounts.example.json` template documenting the required structure with placeholder values.
+  - Added native Node.js `.env` loading via `process.loadEnvFile()`.
 
 ### Changed
 
+- **Extracted sensitive account data from version control** _(config.js, .gitignore)_
+  - Removed hardcoded WhatsApp group IDs, phone numbers, and account BSUIDs (`@lid`) from `src/config.js`.
+  - Ignored `accounts.json` and `data/accounts.json` in `.gitignore`.
 - **Full Brazilian Portuguese localization for UI and logs** _(client.js, commands.js, dispatcher.js, scheduler.js, auto-scheduler.js, persistence.js, config.js, index.js)_
   - Translated all user-facing WhatsApp messages, queue alerts, schedule status reports, and execution confirmations to Portuguese (pt-BR).
   - Translated internal runtime event logs, startup messages, watchdog alerts, and console notifications to Portuguese while maintaining English code symbols.
@@ -35,9 +42,16 @@ Baseado em [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Comandos do bot do WhatsApp em português** _(client.js, commands.js, README.md)_
   - Adicionados comandos primários em português (`!limpar`, `!reiniciar`, `!disparar`, `!grupos`, `!limpar-reservas`, `!parar-reinicio`, incluindo a opção `--reagendar`).
   - Mantidos aliases para os comandos legados em inglês (`!clear`, `!reset`, `!fire`, `!groups`, `!clearReservations`, `!stopreset`, `!stopMidnightReset`) para garantir retrocompatibilidade total.
+- **Configuração segura e não versionada de contas** _(config.js, accounts.example.json, .gitignore, README.md)_
+  - Adicionado suporte ao carregamento de configurações de contas a partir da variável de ambiente `ACCOUNTS_JSON`, caminho customizado via `ACCOUNTS_CONFIG_PATH` ou arquivo local não versionado `accounts.json` / `data/accounts.json`.
+  - Adicionado o arquivo modelo `accounts.example.json` documentando a estrutura necessária com dados fictícios.
+  - Adicionado suporte a carregamento nativo de `.env` via `process.loadEnvFile()`.
 
 ### Modificado
 
+- **Extração de dados sensíveis de contas do controle de versão** _(config.js, .gitignore)_
+  - Removidos IDs de grupos, números e BSUIDs (`@lid`) que estavam diretamente fixados no código-fonte em `src/config.js`.
+  - Ignorados `accounts.json` e `data/accounts.json` no `.gitignore`.
 - **Localização completa da UI e logs para Português do Brasil (pt-BR)** _(client.js, commands.js, dispatcher.js, scheduler.js, auto-scheduler.js, persistence.js, config.js, index.js)_
   - Tradução de todas as mensagens enviadas pelo bot no WhatsApp, alertas de fila cheia, relatórios de status e confirmações de disparos.
   - Tradução de todos os logs de eventos, mensagens de inicialização no terminal, alertas do watchdog e notificações, preservando identificadores de código-fonte em inglês.
@@ -47,6 +61,11 @@ Baseado em [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - **Módulo de painel obsoleto** _(dashboard.html)_
   - Removido o arquivo `dashboard.html` desatualizado e sem uso no projeto.
+
+---
+
+> **Commit:** `feat(config): decouple sensitive account data into environment configuration [v5.2.0]`  
+> **Tag:** `v5.2.0`
 
 ---
 
