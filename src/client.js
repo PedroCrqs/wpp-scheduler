@@ -56,14 +56,14 @@ state.client = client;
 
 async function startBot() {
   try {
-    await persistence.log("BOT", "Starting WhatsApp client...");
+    await persistence.log("BOT", "Iniciando cliente WhatsApp...");
     await client.initialize();
   } catch (err) {
     await persistence.log(
       "ERROR",
-      `Initialization failed: ${err.message}. Retrying in 30s...`,
+      `Falha na inicialização: ${err.message}. Tentando novamente em 30s...`,
     );
-    // NOTE: setTimeout receives the function reference, not its return value
+    // NOTA: setTimeout recebe a referência da função, não seu valor de retorno
     setTimeout(startBot, 30000);
   }
 }
@@ -76,13 +76,13 @@ client.on("qr", (qr) => {
 });
 
 client.once("ready", async () => {
-  await persistence.log("BOT", "WhatsApp client ready ✓");
+  await persistence.log("BOT", "Cliente WhatsApp pronto ✓");
   state.myBsuid = ACCOUNTS[INSTANCE].myBsuid;
   console.log("BSUID:", state.myBsuid);
 
   // Adicione estes ouvintes ANTES do client.initialize() para debugar a transição:
   client.on("authenticated", async () => {
-    await persistence.log("BOT", "WhatsApp authenticated, loading session...");
+    await persistence.log("BOT", "WhatsApp autenticado, carregando sessão...");
   });
 
   // Proteção para evitar erros em encerramentos controlados
@@ -98,14 +98,14 @@ client.once("ready", async () => {
     (m) => m.status === "sent",
   ).length;
 
-  // Carrega ou gera schedule
+  // Carrega ou gera cronograma de agendamentos
   const savedSchedule = persistence.loadSchedule();
   if (savedSchedule) {
     state.SCHEDULE = savedSchedule.slots;
     state.scheduleDate = savedSchedule.date;
     await persistence.log(
       "BOT",
-      `Schedule loaded from disk: ${state.SCHEDULE.join(", ")}`,
+      `Cronograma carregado do disco: ${state.SCHEDULE.join(", ")}`,
     );
   } else {
     state.SCHEDULE = generateSchedule();
@@ -115,19 +115,19 @@ client.once("ready", async () => {
     persistence.saveSchedule();
     await persistence.log(
       "BOT",
-      `Schedule generated: ${state.SCHEDULE.join(", ")}`,
+      `Cronograma gerado: ${state.SCHEDULE.join(", ")}`,
     );
   }
 
   await persistence.log(
     "BOT",
-    `Queue: ${state.todayQueue.length} message(s) | ${state.dispatchesDone} already dispatched`,
+    `Fila: ${state.todayQueue.length} mensagem(ns) | ${state.dispatchesDone} já disparada(s)`,
   );
 
-  // Recover slots stuck in "sending" before checking queue emptiness
+  // Recupera slots travados em "sending" antes de verificar se a fila está vazia
   await persistence.recoverSendingSlots();
 
-  // Auto-feed on boot: if queue is still empty after recovery, fetch from DB
+  // Auto-alimentação no boot: se a fila continuar vazia após a recuperação, busca do banco de dados
   if (state.todayQueue.length === 0) {
     await persistence.log(
       "BOT",
@@ -153,12 +153,12 @@ client.once("ready", async () => {
 
 // ─── Eventos de sessão ───────────────────────────────────────────────────────
 client.on("auth_failure", (msg) => {
-  persistence.log("ERROR", `Auth failure: ${msg}`);
+  persistence.log("ERROR", `Falha de autenticação: ${msg}`);
   setTimeout(startBot, 30000);
 });
 
 client.on("disconnected", (reason) => {
-  persistence.log("WARN", `Disconnected: ${reason}`);
+  persistence.log("WARN", `Desconectado: ${reason}`);
 });
 
 // ─── Recebimento de mensagens ────────────────────────────────────────────────
@@ -179,38 +179,52 @@ client.on("message_create", async (msg) => {
     await handleStatus(msg);
     return;
   }
-  if (msg.body === "!clear") {
+  if (msg.body === "!limpar" || msg.body === "!clear") {
     await handleClear(msg);
     return;
   }
-  if (msg.body === "!groups") {
+  if (msg.body === "!grupos" || msg.body === "!groups") {
     await handleGroups(client, msg);
     return;
   }
-  if (msg.body.startsWith("!fire")) {
+  if (msg.body.startsWith("!disparar") || msg.body.startsWith("!fire")) {
     await handleFire(msg);
     return;
   }
-  if (msg.body.startsWith("!stopreset")) {
+  if (
+    msg.body.startsWith("!parar-reinicio") ||
+    msg.body.startsWith("!pararreinicio") ||
+    msg.body.startsWith("!stopreset") ||
+    msg.body.startsWith("!stopMidnightReset")
+  ) {
     await handleStopMidnightReset(msg);
     return;
   }
-  if (msg.body.startsWith("!reset --reschedule")) {
+  if (
+    msg.body.startsWith("!reiniciar --reagendar") ||
+    msg.body.startsWith("!reiniciar --reschedule") ||
+    msg.body.startsWith("!reset --reschedule") ||
+    msg.body.startsWith("!reset --reagendar")
+  ) {
     await handleReset(msg, true);
     return;
   }
-  if (msg.body.startsWith("!reset")) {
+  if (msg.body.startsWith("!reiniciar") || msg.body.startsWith("!reset")) {
     await handleReset(msg, false);
     return;
   }
-  if (msg.body.startsWith("!clearReservations")) {
+  if (
+    msg.body.startsWith("!limpar-reservas") ||
+    msg.body.startsWith("!limparreservas") ||
+    msg.body.startsWith("!clearReservations")
+  ) {
     await handleResetReservedToday(msg);
     return;
   }
 
   // ── Limite de fila ────────────────────────────────────────────────────────
   if (state.todayQueue.length >= 14) {
-    await msg.reply("⚠️ Queue is full (14/14). Send *!clear* to reset.");
+    await msg.reply("⚠️ Fila cheia (14/14). Envie *!limpar* para redefinir.");
     return;
   }
 
@@ -232,7 +246,7 @@ client.on("message_create", async (msg) => {
     receivedAt: new Date().toISOString(),
     dispatchedAt: null,
     status: "waiting",
-    neighborhood: neighborhood || "unidentified",
+    neighborhood: neighborhood || "não identificado",
     class: announcementCls,
     targetGroups,
   };
@@ -247,20 +261,20 @@ client.on("message_create", async (msg) => {
   const scheduledTime = state.SCHEDULE[entry.index] || "—";
   const classText =
     announcementCls === "GENERAL"
-      ? "⚠️ unidentified — general groups only"
+      ? "⚠️ não identificado — apenas grupos gerais"
       : `✅ *${announcementCls}*`;
 
   await msg.reply(
-    `✅ *Message ${state.todayQueue.length}/14 received!*\n\n` +
-      `📍 Neighborhood: *${neighborhood || "unidentified"}*\n` +
-      `🏷️ Class: ${classText}\n` +
-      `📢 Target groups: *${targetGroups.length}*\n\n` +
-      `⏰ Scheduled for *${scheduledTime}*`,
+    `✅ *Mensagem ${state.todayQueue.length}/14 recebida!*\n\n` +
+      `📍 Bairro: *${neighborhood || "não identificado"}*\n` +
+      `🏷️ Classe: ${classText}\n` +
+      `📢 Grupos de destino: *${targetGroups.length}*\n\n` +
+      `⏰ Agendado para *${scheduledTime}*`,
   );
 
   await persistence.log(
     "RECEIVED",
-    `Msg ${state.todayQueue.length} | neighborhood: ${neighborhood} | class: ${announcementCls} | groups: ${targetGroups.length}`,
+    `Msg ${state.todayQueue.length} | bairro: ${neighborhood || "não identificado"} | classe: ${announcementCls} | grupos: ${targetGroups.length}`,
   );
 });
 

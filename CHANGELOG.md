@@ -8,6 +8,48 @@ Baseado em [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [5.2.0] - Unreleased
+
+### Added
+
+- **Portuguese WhatsApp bot commands** _(client.js, commands.js, README.md)_
+  - Introduced primary commands in Portuguese (`!limpar`, `!reiniciar`, `!disparar`, `!grupos`, `!limpar-reservas`, `!parar-reinicio`, with flag `--reagendar`).
+  - Preserved backward-compatible aliases for legacy English commands (`!clear`, `!reset`, `!fire`, `!groups`, `!clearReservations`, `!stopreset`, `!stopMidnightReset`).
+
+### Changed
+
+- **Full Brazilian Portuguese localization for UI and logs** _(client.js, commands.js, dispatcher.js, scheduler.js, auto-scheduler.js, persistence.js, config.js, index.js)_
+  - Translated all user-facing WhatsApp messages, queue alerts, schedule status reports, and execution confirmations to Portuguese (pt-BR).
+  - Translated internal runtime event logs, startup messages, watchdog alerts, and console notifications to Portuguese while maintaining English code symbols.
+  - Translated all source code comments to Portuguese across all modules.
+
+### Removed
+
+- **Deprecated dashboard module** _(dashboard.html)_
+  - Removed outdated and unused `dashboard.html` file from the project.
+
+---
+
+### Adicionado
+
+- **Comandos do bot do WhatsApp em português** _(client.js, commands.js, README.md)_
+  - Adicionados comandos primários em português (`!limpar`, `!reiniciar`, `!disparar`, `!grupos`, `!limpar-reservas`, `!parar-reinicio`, incluindo a opção `--reagendar`).
+  - Mantidos aliases para os comandos legados em inglês (`!clear`, `!reset`, `!fire`, `!groups`, `!clearReservations`, `!stopreset`, `!stopMidnightReset`) para garantir retrocompatibilidade total.
+
+### Modificado
+
+- **Localização completa da UI e logs para Português do Brasil (pt-BR)** _(client.js, commands.js, dispatcher.js, scheduler.js, auto-scheduler.js, persistence.js, config.js, index.js)_
+  - Tradução de todas as mensagens enviadas pelo bot no WhatsApp, alertas de fila cheia, relatórios de status e confirmações de disparos.
+  - Tradução de todos os logs de eventos, mensagens de inicialização no terminal, alertas do watchdog e notificações, preservando identificadores de código-fonte em inglês.
+  - Tradução de comentários internos nos módulos para português.
+
+### Removido
+
+- **Módulo de painel obsoleto** _(dashboard.html)_
+  - Removido o arquivo `dashboard.html` desatualizado e sem uso no projeto.
+
+---
+
 ## [5.1.0] - 2026-10-26
 
 ### Added

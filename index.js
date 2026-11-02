@@ -10,6 +10,6 @@ console.log("██████╔╝╚██████╔╝   ██║   "
 console.log("╚═════╝  ╚═════╝    ╚═╝   ");
 console.log("  WhatsApp Scheduler Bot  ");
 console.log("");
-console.log(`🤖 Starting instance: ${INSTANCE}`);
+console.log(`🤖 Iniciando instância: ${INSTANCE}`);
 
 startBot();

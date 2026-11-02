@@ -22,7 +22,7 @@ async function processDispatchQueue() {
     } catch (err) {
       await persistence.log(
         "ERROR",
-        `Unhandled error in slot ${index + 1}: ${err.message}`,
+        `Erro não tratado no slot ${index + 1}: ${err.message}`,
       );
     } finally {
       state.dispatchRunning = false;
@@ -33,13 +33,13 @@ async function processDispatchQueue() {
 async function executeDispatch(index) {
   await persistence.log(
     "DISPATCH",
-    `Starting slot ${index + 1} (${state.SCHEDULE[index] || "manual"})`,
+    `Iniciando slot ${index + 1} (${state.SCHEDULE[index] || "manual"})`,
   );
 
   if (index >= state.todayQueue.length) {
     await persistence.log(
       "WARN",
-      `Slot ${index + 1}: no message in queue for this slot`,
+      `Slot ${index + 1}: nenhuma mensagem na fila para este slot`,
     );
     return;
   }
@@ -47,13 +47,13 @@ async function executeDispatch(index) {
   const message = state.todayQueue[index];
 
   if (message.status === "sent") {
-    await persistence.log("WARN", `Slot ${index + 1}: already sent, skipping`);
+    await persistence.log("WARN", `Slot ${index + 1}: já enviado, ignorando`);
     return;
   }
   if (message.status === "sending") {
     await persistence.log(
       "WARN",
-      `Slot ${index + 1}: already in progress, skipping`,
+      `Slot ${index + 1}: já em andamento, ignorando`,
     );
     return;
   }
@@ -69,7 +69,7 @@ async function executeDispatch(index) {
 
   await persistence.log(
     "DISPATCH",
-    `Slot ${index + 1} | neighborhood: ${message.neighborhood || "—"} | class: ${message.class || "GENERAL"} | ${targetGroups.length} groups`,
+    `Slot ${index + 1} | bairro: ${message.neighborhood || "—"} | classe: ${message.class || "GENERAL"} | ${targetGroups.length} grupos`,
   );
 
   const client = state.client;
@@ -93,12 +93,12 @@ async function executeDispatch(index) {
         await sleep(4000 + Math.random() * 8000);
       }
     } catch (err) {
-      // Frame ID is dynamic per Chromium session — match by prefix only,
-      // never hardcode the full ID or this check will never trigger.
+      // O ID do frame é dinâmico por sessão do Chromium — verificar apenas por prefixo,
+      // nunca usar o ID completo fixo ou esta validação nunca será acionada.
       if (err.message.includes("Attempted to use detached Frame")) {
         await persistence.log(
           "ERROR",
-          `Slot ${index + 1}: detached frame — aborting dispatch and exiting for restart`,
+          `Slot ${index + 1}: frame desconectado — abortando disparo e encerrando para reinicialização`,
         );
         process.exit(1);
       }
@@ -108,7 +108,7 @@ async function executeDispatch(index) {
       ) {
         await persistence.log(
           "ERROR",
-          `Slot ${index + 1}: network error — exiting for restart`,
+          `Slot ${index + 1}: erro de rede — encerrando para reinicialização`,
         );
         process.exit(1);
       }
@@ -130,7 +130,7 @@ async function executeDispatch(index) {
 
   await persistence.log(
     "DISPATCH",
-    `Slot ${index + 1} done — ${successes} ok, ${failures} failed`,
+    `Slot ${index + 1} concluído — ${successes} ok, ${failures} com falha`,
   );
 
   // Marca o imóvel no ciclo apenas após envio confirmado (ao menos parcial).
@@ -147,9 +147,9 @@ async function executeDispatch(index) {
     const myId = client.info.wid._serialized;
     await client.sendMessage(
       myId,
-      `📤 *Dispatch ${index + 1}/14 done* (${state.SCHEDULE[index] || "manual"})\n\n` +
-        `✅ Sent to ${successes} group(s)\n` +
-        (failures > 0 ? `❌ Failed in ${failures} group(s)\n` : "") +
+      `📤 *Disparo ${index + 1}/14 concluído* (${state.SCHEDULE[index] || "manual"})\n\n` +
+        `✅ Enviado para ${successes} grupo(s)\n` +
+        (failures > 0 ? `❌ Falha em ${failures} grupo(s)\n` : "") +
         `📝 "${message.preview}"`,
     );
   } catch {}
@@ -161,20 +161,20 @@ async function executeDispatch(index) {
     } catch (resetErr) {
       await persistence.log(
         "ERROR",
-        `Post-cycle reset failed: ${resetErr.message}`,
+        `Falha no reset pós-ciclo: ${resetErr.message}`,
       );
     }
     try {
       const myId = client.info.wid._serialized;
       await client.sendMessage(
         myId,
-        `🗑️ *Reset Triggered!*\n\n` +
+        `🗑️ *Reset Acionado!*\n\n` +
           `📦 ${loaded} anúncio(s) carregados automaticamente do banco.`,
       );
     } catch (msgErr) {
       await persistence.log(
         "ERROR",
-        `Post-reset message failed: ${msgErr.message}`,
+        `Falha no envio da mensagem pós-reset: ${msgErr.message}`,
       );
     }
   }
