@@ -4,9 +4,6 @@ const persistence = require("./persistence");
 const {
   fetchAndReserveAnnouncements,
   pruneOldReservations,
-  doBackup,
-  acquireLock,
-  releaseLock,
 } = require("./auto-scheduler");
 
 function nowSP() {
@@ -48,7 +45,7 @@ function generateSchedule() {
 function nextScheduledTime() {
   const current = nowSP();
   const next = state.SCHEDULE.find((h) => h > current);
-  return next || "None today (all passed)";
+  return next || "Nenhum hoje (todos concluídos)";
 }
 
 async function scheduleDispatches() {
@@ -66,7 +63,7 @@ async function scheduleDispatches() {
       async () => {
         await persistence.log(
           "CRON",
-          `Trigger for slot ${index + 1} (${time})`,
+          `Disparo agendado para o slot ${index + 1} (${time})`,
         );
         queueDispatch(index);
       },
@@ -76,65 +73,43 @@ async function scheduleDispatches() {
     state.slotCronTasks.push(task);
   });
 
-  await persistence.log("CRON", `${state.SCHEDULE.length} slots scheduled ✓`);
+  await persistence.log("CRON", `${state.SCHEDULE.length} slots agendados ✓`);
 }
 
 async function autoFeedQueue() {
-  // Adquire lock no Drive antes de qualquer operação.
-  // Garante que apenas uma instância execute o ciclo de reserva por vez,
-  // evitando que duas instâncias baixem o mesmo estado do Drive e reservem
-  // os mesmos imóveis em paralelo (causa raiz do bug de fila duplicada).
-  const locked = await acquireLock();
-  if (!locked) {
+  // A coordenação entre instâncias (evitar reservar o mesmo imóvel duas
+  // vezes) agora é feita dentro de fetchAndReserveAnnouncements, via
+  // transação Postgres com ON CONFLICT DO NOTHING — não precisa mais de
+  // lock de arquivo nem de baixar/subir o banco do Drive antes de rodar.
+  await pruneOldReservations();
+  const entries = await fetchAndReserveAnnouncements(14);
+
+  if (entries.length === 0) {
     await persistence.log(
       "AUTO-SCHEDULER",
-      `Lock not acquired — another instance is running autoFeedQueue. Skipping.`,
+      "Fila vazia — nenhum anúncio disponível.",
     );
     return 0;
   }
 
-  try {
-    // 1. Baixa o banco mais recente do Drive (agora seguro: somos o único processo)
-    await doBackup("download");
+  entries.forEach((e, i) => {
+    e.index = i;
+  });
 
-    // 2. Limpa reservas de dias anteriores e busca novos anúncios
-    await pruneOldReservations();
-    const entries = await fetchAndReserveAnnouncements(14);
+  state.todayQueue = entries;
+  state.dispatchesDone = 0;
+  await persistence.saveQueue();
 
-    if (entries.length === 0) {
-      await persistence.log(
-        "AUTO-SCHEDULER",
-        "Queue is empty — no announcements available.",
-      );
-      return 0;
-    }
+  await persistence.log(
+    "AUTO-SCHEDULER",
+    `Fila preenchida com ${entries.length} anúncio(s).`,
+  );
 
-    entries.forEach((e, i) => {
-      e.index = i;
-    });
-
-    state.todayQueue = entries;
-    state.dispatchesDone = 0;
-    await persistence.saveQueue();
-
-    await persistence.log(
-      "AUTO-SCHEDULER",
-      `Queue populated with ${entries.length} ad(s).`,
-    );
-
-    // 3. Sobe o banco com as reservas gravadas antes de liberar o lock,
-    //    garantindo que a próxima instância veja o Dispatched_Today atualizado.
-    await doBackup("upload");
-
-    return entries.length;
-  } finally {
-    // Libera sempre, mesmo em caso de erro, para não travar as outras instâncias.
-    await releaseLock();
-  }
+  return entries.length;
 }
 
 async function dailyReset(reschedule = true) {
-  await persistence.log("RESET", "Daily reset triggered");
+  await persistence.log("RESET", "Reset diário acionado");
 
   if (state.resetCronTask) {
     state.resetCronTask.destroy();
@@ -160,7 +135,7 @@ async function dailyReset(reschedule = true) {
 
   await persistence.log(
     "RESET",
-    `Queue cleared | New schedule: ${state.SCHEDULE.join(", ")} | ${loaded} ad(s) loaded`,
+    `Fila limpa | Novo cronograma: ${state.SCHEDULE.join(", ")} | ${loaded} anúncio(s) carregados`,
   );
 
   await scheduleDispatches();
@@ -202,14 +177,14 @@ async function checkMissedDispatches() {
     if (isFirstMissed) {
       persistence.log(
         "WATCHDOG",
-        `Slot ${index + 1} (${time}) overdue — firing immediately`,
+        `Slot ${index + 1} (${time}) atrasado — disparando imediatamente`,
       );
       queueDispatch(index);
     } else {
       const delayMinutes = Math.floor(Math.random() * 11) + 20;
       persistence.log(
         "WATCHDOG",
-        `Slot ${index + 1} (${time}) overdue — scheduling in ${delayMinutes}min`,
+        `Slot ${index + 1} (${time}) atrasado — agendando em ${delayMinutes}min`,
       );
       setTimeout(
         () => {
@@ -217,7 +192,7 @@ async function checkMissedDispatches() {
           if (currentMsg && currentMsg.status === "waiting") {
             persistence.log(
               "WATCHDOG",
-              `Slot ${index + 1} (${time}) firing after delay`,
+              `Slot ${index + 1} (${time}) disparando após atraso programado`,
             );
             queueDispatch(index);
           }
@@ -234,15 +209,15 @@ function initResetScheduler() {
   const task = cron.schedule(
     "0 0 * * *",
     async () => {
-      await persistence.log("RESET", "Daily reset triggered by cron (00:00)");
+      await persistence.log("RESET", "Reset diário acionado pelo cron (00:00)");
       const loaded = await dailyReset();
       try {
         const myId = state.client.info.wid._serialized;
         await state.client.sendMessage(
           myId,
-          `🗑️ *Daily Reset Triggered!*\n\n` +
-            `📦 ${loaded} anúncio(s) carregados automaticamente do banco.\n` +
-            `⏰ New schedule: ${state.SCHEDULE.join(", ")}`,
+          `🗑️ *Reset Diário Acionado!*\n\n` +
+            `📦 ${loaded} anúncio(s) carregados automaticamente do banco de dados.\n` +
+            `⏰ Novo cronograma: ${state.SCHEDULE.join(", ")}`,
         );
       } catch {}
     },
@@ -252,6 +227,14 @@ function initResetScheduler() {
   state.resetCronTask = task;
   state.resetCronInitialized = true;
 }
+
+// TODO: implementar backupSessionFolder
+// async function backupSessionFolder(instance) { }
+
+// const task = cron.schedule("*/30 * * * *", async () => {
+//   if (!state.client || !clientIsReady) return;
+//   await backupSessionFolder(INSTANCE); // copia pra session-backup-{instance}-{timestamp}, mantém últimas 3
+// });
 
 module.exports = {
   generateSchedule,
