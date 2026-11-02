@@ -1,4 +1,4 @@
-# WhatsApp Scheduler Bot (v5.1.0)
+# WhatsApp Scheduler Bot (v5.2.0)
 
 Bot automatizado para WhatsApp que realiza o agendamento e disparo inteligente de anúncios imobiliários para grupos, com auto-alimentação via banco PostgreSQL compartilhado, segmentação geográfica por bairros, controle de concorrência atômico entre múltiplas instâncias e mecanismos avançados anti-ban.
 
@@ -144,33 +144,43 @@ Envie os comandos diretamente para o seu próprio número (chat "Você"):
 
 O arquivo central de configuração é o [`src/config.js`](file:///home/pedrocrqs/main-project-database/wpp-scheduler/src/config.js).
 
-### Estrutura de Contas e Grupos
+### Estrutura de Contas e Grupos (`accounts.json`)
 
-```javascript
-// src/config.js
-const ACCOUNTS = {
-  account1: {
-    myBsuid: "228707713171512@lid",
-    generalGroups: [
-      "5521970332124-1509473137@g.us",
-      "120363154129227809@g.us",
-      // ...
-    ],
-    specificGroups: [
-      { id: "5521970445787-1605316109@g.us", class: "BARRA" },
-      { id: "5521997856010-1512486103@g.us", class: "ZONA_SUL" },
-      { id: "120363204376147970@g.us", class: "ZONA_SUL" },
-      { id: "120363038446694631@g.us", class: "RECREIO" },
-      // ...
-    ],
-  },
-  // account2, account3...
-};
+Para preservar a privacidade e evitar o versionamento de dados sensíveis (IDs de grupos, telefones e identificadores `@lid`), as configurações de contas são desacopladas do código-fonte.
+
+Crie um arquivo `accounts.json` na raiz do projeto utilizando o modelo [`accounts.example.json`](file:///home/pedrocrqs/main-project-database/wpp-scheduler/accounts.example.json):
+
+```bash
+cp accounts.example.json accounts.json
 ```
+
+Exemplo da estrutura:
+
+```json
+{
+  "account1": {
+    "myBsuid": "228707713171512@lid",
+    "generalGroups": [
+      "5521970332124-1509473137@g.us",
+      "120363154129227809@g.us"
+    ],
+    "specificGroups": [
+      { "id": "5521970445787-1605316109@g.us", "class": "BARRA" },
+      { "id": "5521997856010-1512486103@g.us", "class": "ZONA_SUL" }
+    ]
+  }
+}
+```
+
+O arquivo `accounts.json` é ignorado pelo Git através do `.gitignore`.
 
 ### Variáveis de Ambiente
 
+O bot suporta carregamento automático de arquivo `.env` (via `process.loadEnvFile()` nativo do Node.js) ou variáveis de ambiente do sistema:
+
 - `DATABASE_URL`: String de conexão com o PostgreSQL (Padrão: `postgresql://postgres:postgres@localhost:5432/imoveis`).
+- `ACCOUNTS_JSON`: (Opcional) String JSON completa contendo a configuração das contas. Quando definida, substitui a leitura de arquivos locais (ideal para ambientes Docker, CI/CD ou PM2).
+- `ACCOUNTS_CONFIG_PATH`: (Opcional) Caminho customizado para o arquivo de contas (padrão: `accounts.json` na raiz ou `data/accounts.json`).
 
 ---
 

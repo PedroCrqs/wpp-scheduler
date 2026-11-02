@@ -1,0 +1,47 @@
+{
+  "account1": {
+    "myBsuid": "000000000000000@lid",
+    "generalGroups": [
+      "120363000000000001@g.us",
+      "120363000000000002@g.us"
+    ],
+    "specificGroups": [
+      {
+        "id": "120363000000000003@g.us",
+        "class": "BARRA"
+      },
+      {
+        "id": "120363000000000004@g.us",
+        "class": "RECREIO"
+      },
+      {
+        "id": "120363000000000005@g.us",
+        "class": "ZONA_SUL"
+      }
+    ]
+  },
+  "account2": {
+    "myBsuid": "000000000000000@lid",
+    "generalGroups": [
+      "120363000000000001@g.us"
+    ],
+    "specificGroups": [
+      {
+        "id": "120363000000000003@g.us",
+        "class": "BARRA"
+      }
+    ]
+  },
+  "account3": {
+    "myBsuid": "000000000000000@lid",
+    "generalGroups": [
+      "120363000000000001@g.us"
+    ],
+    "specificGroups": [
+      {
+        "id": "120363000000000003@g.us",
+        "class": "BARRA"
+      }
+    ]
+  }
+}
