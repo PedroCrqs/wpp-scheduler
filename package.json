@@ -1,6 +1,6 @@
 {
   "name": "whatsapp-scheduler-bot",
-  "version": "5.2.0",
+  "version": "5.2.1",
   "description": "Bot WhatsApp para disparo de mensagens agendadas em grupos",
   "main": "index.js",
   "scripts": {
@@ -12,7 +12,7 @@
     "pg": "^8.13.0",
     "puppeteer": "^25.3.0",
     "qrcode-terminal": "^0.12.0",
-    "whatsapp-web.js": "github:lindionez/whatsapp-web.js#feat/fix-_serialized-id-fallback"
+    "whatsapp-web.js": "https://codeload.github.com/wwebjs/whatsapp-web.js/tar.gz/38eb45b"
   },
   "repository": {
     "type": "git",

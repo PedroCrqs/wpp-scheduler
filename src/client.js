@@ -1,3 +1,5 @@
+const fs = require("fs");
+const path = require("path");
 const { Client, LocalAuth } = require("whatsapp-web.js");
 const qrcode = require("qrcode-terminal");
 const cron = require("node-cron");
@@ -32,16 +34,7 @@ const client = new Client({
   authStrategy: new LocalAuth({
     clientId: `scheduler-bot-${INSTANCE}`,
     dataPath: SESSIONS_DIR,
-    webVersion: '2.3000.1014.0',
-    webVersionCache: {
-      type: 'remote',
-      remotePath:'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.3000.1014.0.html'}
   }),
-  // Força uma versão estável e mantida pela comunidade atualizada
-  webVersionCache: {
-    type: 'remote',
-    remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.3000.1014589918-alpha.html',
-  },
   puppeteer: {
     headless: true,
     args: [
@@ -58,8 +51,18 @@ const client = new Client({
 
 state.client = client;
 
+function cleanStaleSessionLocks() {
+  const sessionDir = path.join(SESSIONS_DIR, `session-scheduler-bot-${INSTANCE}`);
+  for (const lockFile of ["SingletonLock", "SingletonSocket", "SingletonCookie"]) {
+    try {
+      fs.rmSync(path.join(sessionDir, lockFile), { force: true });
+    } catch {}
+  }
+}
+
 async function startBot() {
   try {
+    cleanStaleSessionLocks();
     await persistence.log("BOT", "Iniciando cliente WhatsApp...");
     await client.initialize();
   } catch (err) {
@@ -67,6 +70,9 @@ async function startBot() {
       "ERROR",
       `Falha na inicialização: ${err.message}. Tentando novamente em 30s...`,
     );
+    try {
+      await client.destroy();
+    } catch {}
     // NOTA: setTimeout recebe a referência da função, não seu valor de retorno
     setTimeout(startBot, 30000);
   }
@@ -79,22 +85,23 @@ client.on("qr", (qr) => {
   qrcode.generate(qr, { small: true });
 });
 
+client.on("authenticated", async () => {
+  await persistence.log("BOT", "WhatsApp autenticado, carregando sessão...");
+});
+
+// Proteção para evitar erros e locks órfãos em encerramentos controlados
+process.on("SIGTERM", async () => {
+  await persistence.log("BOT", "SIGTERM recebido — encerrando sessão graciosamente");
+  try {
+    await client.destroy();
+  } catch {}
+  process.exit(0);
+});
+
 client.once("ready", async () => {
   await persistence.log("BOT", "Cliente WhatsApp pronto ✓");
   state.myBsuid = ACCOUNTS[INSTANCE].myBsuid;
   console.log("BSUID:", state.myBsuid);
-
-  // Adicione estes ouvintes ANTES do client.initialize() para debugar a transição:
-  client.on("authenticated", async () => {
-    await persistence.log("BOT", "WhatsApp autenticado, carregando sessão...");
-  });
-
-  // Proteção para evitar erros em encerramentos controlados
-  process.on("SIGTERM", async () => {
-    await persistence.log("BOT", "SIGTERM recebido — encerrando sessão graciosamente");
-    await client.destroy();
-    process.exit(0);
-  });
 
   // Carrega fila salva em disco
   state.todayQueue = persistence.loadQueue();

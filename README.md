@@ -1,4 +1,4 @@
-# WhatsApp Scheduler Bot (v5.2.0)
+# WhatsApp Scheduler Bot (v5.2.1)
 
 Bot automatizado para WhatsApp que realiza o agendamento e disparo inteligente de anúncios imobiliários para grupos, com auto-alimentação via banco PostgreSQL compartilhado, segmentação geográfica por bairros, controle de concorrência atômico entre múltiplas instâncias e mecanismos avançados anti-ban.
 

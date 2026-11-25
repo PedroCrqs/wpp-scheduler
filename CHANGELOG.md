@@ -8,6 +8,47 @@ Baseado em [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [5.2.1] - 2026-11-25
+
+### Fixed
+
+- **WhatsApp Web `/login/` route timeout (`Waiting failed: 30000ms exceeded`)** _(package.json, package-lock.json)_
+  - Root cause: WhatsApp Web (`2.3000.1056245197`) began redirecting logged-out sessions to `https://web.whatsapp.com/login/`, where `WAWebSocketModel` is no longer exposed and was replaced by `WAWebBackendEventBus`.
+  - Updated `whatsapp-web.js` to upstream commit `38eb45b` (`wwebjs/whatsapp-web.js#201990`, installed via HTTPS tarball so Docker builds require no `git` binary or SSH keys), which also includes the upstream `id._serialized` fallback fix previously sourced from a now-deleted temporary fork.
+- **Cascading Chromium profile lock errors on retry and container restarts** _(src/client.js)_
+  - Updated `startBot()` to safely call `await client.destroy()` in its `catch` block before scheduling a retry, preventing `The browser is already running` loops after initialization timeouts.
+  - Added `cleanStaleSessionLocks()` before `client.initialize()` to clear orphaned Chromium `SingletonLock`/`SingletonSocket`/`SingletonCookie` files left behind by unclean stops or container hostname changes (`Code: 21`).
+  - Moved `authenticated` and `SIGTERM` listeners outside `client.once("ready")` so authentication transitions are logged and graceful shutdown destroys Chromium even before `ready`.
+
+### Changed
+
+- **Removed obsolete `webVersionCache` override** _(src/client.js)_
+  - Removed the broken remote `webVersionCache` URL (`2.3000.1014589918-alpha.html`, returning HTTP 404) and invalid nested `webVersion`/`webVersionCache` keys inside `LocalAuth`.
+
+---
+
+### Corrigido
+
+- **Timeout na rota `/login/` do WhatsApp Web (`Waiting failed: 30000ms exceeded`)** _(package.json, package-lock.json)_
+  - Causa raiz: o WhatsApp Web (`2.3000.1056245197`) passou a redirecionar sessões deslogadas para `https://web.whatsapp.com/login/`, onde o módulo `WAWebSocketModel` foi substituído por `WAWebBackendEventBus`.
+  - Atualizada a dependência `whatsapp-web.js` para o commit upstream `38eb45b` (`wwebjs/whatsapp-web.js#201990`, via tarball HTTPS para compatibilidade com builds Docker sem `git` nem chaves SSH), que também já incorpora o fix de fallback de `id._serialized` anteriormente obtido de um fork temporário removido.
+- **Erros em cascata de lock de perfil do Chromium em retentativas e reinícios de container** _(src/client.js)_
+  - Atualizado `startBot()` para executar `await client.destroy()` com segurança no bloco `catch` antes de agendar nova tentativa, evitando o loop `The browser is already running` após timeouts de inicialização.
+  - Adicionada a função `cleanStaleSessionLocks()` antes de `client.initialize()` para limpar arquivos órfãos `SingletonLock`/`SingletonSocket`/`SingletonCookie` deixados por encerramentos abruptos ou troca de hostname do container (`Code: 21`).
+  - Movidos os ouvintes `authenticated` e `SIGTERM` para fora de `client.once("ready")`, garantindo log da transição de autenticação e encerramento gracioso do Chromium mesmo antes do evento `ready`.
+
+### Modificado
+
+- **Remoção do override obsoleto de `webVersionCache`** _(src/client.js)_
+  - Removida a URL remota quebrada de `webVersionCache` (`2.3000.1014589918-alpha.html`, que retornava HTTP 404) e as chaves inválidas `webVersion`/`webVersionCache` aninhadas dentro de `LocalAuth`.
+
+---
+
+> **Commit:** `fix(client): update whatsapp-web.js for /login/ route and fix startup retry cleanup [v5.2.1]`  
+> **Tag:** `v5.2.1`
+
+---
+
 ## [5.2.0] - 2026-11-02
 
 ### Added
