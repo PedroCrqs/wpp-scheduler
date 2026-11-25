@@ -35,6 +35,11 @@ const client = new Client({
     clientId: `scheduler-bot-${INSTANCE}`,
     dataPath: SESSIONS_DIR,
   }),
+  // Desativa o cache local de HTML (./.wwebjs_cache/) para sempre usar o WhatsApp Web
+  // atual e evitar EACCES silencioso no callback pós-autenticação em containers restritos
+  webVersionCache: {
+    type: "none",
+  },
   puppeteer: {
     headless: true,
     args: [
@@ -51,6 +56,16 @@ const client = new Client({
 
 state.client = client;
 
+const AUTH_READY_TIMEOUT_MS =
+  Number(process.env.AUTH_READY_TIMEOUT_MS) || 120_000;
+const RESTART_DELAY_MS = 30_000;
+
+let isClientReady = false;
+let authReadyWatchdog = null;
+let restartTimer = null;
+let lastPageError = null;
+const monitoredPages = new WeakSet();
+
 function cleanStaleSessionLocks() {
   const sessionDir = path.join(SESSIONS_DIR, `session-scheduler-bot-${INSTANCE}`);
   for (const lockFile of ["SingletonLock", "SingletonSocket", "SingletonCookie"]) {
@@ -60,21 +75,89 @@ function cleanStaleSessionLocks() {
   }
 }
 
+function clearAuthReadyWatchdog() {
+  if (authReadyWatchdog) {
+    clearTimeout(authReadyWatchdog);
+    authReadyWatchdog = null;
+  }
+}
+
+/**
+ * Destrói o cliente atual com segurança e agenda uma única tentativa de
+ * reinicialização, evitando reinícios concorrentes ou locks órfãos do Chromium.
+ */
+async function scheduleRestart(reason) {
+  clearAuthReadyWatchdog();
+  if (restartTimer) return;
+
+  await persistence.log(
+    "ERROR",
+    `${reason}. Reiniciando cliente em ${Math.round(RESTART_DELAY_MS / 1000)}s...`,
+  );
+  try {
+    await client.destroy();
+  } catch {}
+
+  restartTimer = setTimeout(() => {
+    restartTimer = null;
+    startBot();
+  }, RESTART_DELAY_MS);
+}
+
+/**
+ * Monitora exceções não tratadas na página do Chromium (incluindo rejeições de
+ * callbacks expostos via Puppeteer `exposeFunction`, como `onAppStateHasSyncedEvent`),
+ * que normalmente ficam restritas ao contexto do browser e travariam o bot em silêncio.
+ */
+function attachPageErrorDiagnostics() {
+  const page = client.pupPage;
+  if (!page || monitoredPages.has(page)) return;
+  monitoredPages.add(page);
+
+  page.on("pageerror", async (err) => {
+    const detail = err?.message || String(err);
+    lastPageError = detail;
+    await persistence.log("ERROR", `[Chromium pageerror] ${detail}`);
+
+    if (!isClientReady && /EACCES|EROFS|ENOSPC|ready timeout/i.test(detail)) {
+      await scheduleRestart(
+        `Erro crítico detectado no carregamento pós-autenticação: ${detail}`,
+      );
+    }
+  });
+}
+
+/**
+ * Watchdog pós-autenticação: se `authenticated` disparar mas `ready` não chegar
+ * dentro de AUTH_READY_TIMEOUT_MS, destrói o Chromium e agenda reinicialização.
+ */
+function armAuthReadyWatchdog() {
+  if (isClientReady || authReadyWatchdog) return;
+
+  authReadyWatchdog = setTimeout(async () => {
+    authReadyWatchdog = null;
+    if (isClientReady) return;
+
+    const extra = lastPageError
+      ? ` | Último pageerror: ${lastPageError}`
+      : "";
+    await scheduleRestart(
+      `Sessão autenticada, mas evento "ready" não disparou em ${Math.round(AUTH_READY_TIMEOUT_MS / 1000)}s${extra}`,
+    );
+  }, AUTH_READY_TIMEOUT_MS);
+}
+
 async function startBot() {
+  clearAuthReadyWatchdog();
+  isClientReady = false;
+  lastPageError = null;
   try {
     cleanStaleSessionLocks();
     await persistence.log("BOT", "Iniciando cliente WhatsApp...");
     await client.initialize();
+    attachPageErrorDiagnostics();
   } catch (err) {
-    await persistence.log(
-      "ERROR",
-      `Falha na inicialização: ${err.message}. Tentando novamente em 30s...`,
-    );
-    try {
-      await client.destroy();
-    } catch {}
-    // NOTA: setTimeout recebe a referência da função, não seu valor de retorno
-    setTimeout(startBot, 30000);
+    await scheduleRestart(`Falha na inicialização: ${err.message}`);
   }
 }
 
@@ -86,11 +169,18 @@ client.on("qr", (qr) => {
 });
 
 client.on("authenticated", async () => {
+  attachPageErrorDiagnostics();
   await persistence.log("BOT", "WhatsApp autenticado, carregando sessão...");
+  armAuthReadyWatchdog();
 });
 
 // Proteção para evitar erros e locks órfãos em encerramentos controlados
 process.on("SIGTERM", async () => {
+  clearAuthReadyWatchdog();
+  if (restartTimer) {
+    clearTimeout(restartTimer);
+    restartTimer = null;
+  }
   await persistence.log("BOT", "SIGTERM recebido — encerrando sessão graciosamente");
   try {
     await client.destroy();
@@ -99,6 +189,9 @@ process.on("SIGTERM", async () => {
 });
 
 client.once("ready", async () => {
+  isClientReady = true;
+  clearAuthReadyWatchdog();
+  attachPageErrorDiagnostics();
   await persistence.log("BOT", "Cliente WhatsApp pronto ✓");
   state.myBsuid = ACCOUNTS[INSTANCE].myBsuid;
   console.log("BSUID:", state.myBsuid);
@@ -163,12 +256,14 @@ client.once("ready", async () => {
 });
 
 // ─── Eventos de sessão ───────────────────────────────────────────────────────
-client.on("auth_failure", (msg) => {
-  persistence.log("ERROR", `Falha de autenticação: ${msg}`);
-  setTimeout(startBot, 30000);
+client.on("auth_failure", async (msg) => {
+  isClientReady = false;
+  await scheduleRestart(`Falha de autenticação: ${msg}`);
 });
 
 client.on("disconnected", (reason) => {
+  isClientReady = false;
+  clearAuthReadyWatchdog();
   persistence.log("WARN", `Desconectado: ${reason}`);
 });
 

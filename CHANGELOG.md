@@ -8,6 +8,45 @@ Baseado em [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [5.2.3] - 2026-11-25
+
+### Fixed
+
+- **Silent hang after `authenticated` (`EACCES: permission denied, mkdir './.wwebjs_cache/'`)** _(src/client.js, Dockerfile)_
+  - Root cause: removing the obsolete `webVersionCache` override in `v5.2.1` made `whatsapp-web.js` fall back to its default `LocalWebCache` (`./.wwebjs_cache/` inside `/app`). Because `Dockerfile` created `pptruser` (`uid=997`) as owner of `/app` (`755`) while `docker-compose.yml` runs containers as `user: "1000:1000"` (`node`), `webCache.persist()` threw `EACCES` inside the Puppeteer-exposed `onAppStateHasSyncedEvent` callback. That rejection stayed inside the Chromium page context with no Node.js error log, aborting before `LoadUtils` and preventing `ready` from ever firing.
+  - Explicitly set `webVersionCache: { type: "none" }` in `Client` options so WhatsApp Web always loads live without writing unused HTML cache files to `/app`.
+  - Aligned `Dockerfile` to use the built-in `node` user (`uid/gid 1000`) instead of creating a separate `pptruser` (`uid 997`), matching runtime `user: "1000:1000"` ownership across `/app`.
+
+### Added
+
+- **Post-authentication `ready` watchdog and Chromium `pageerror` diagnostics** _(src/client.js, README.md)_
+  - Added `attachPageErrorDiagnostics()` to listen for Chromium `pageerror` events (surfacing silent browser-side or `exposeFunction` callback rejections into application logs and triggering fast recovery on fatal filesystem/injection errors such as `EACCES`, `EROFS`, `ENOSPC`, or `ready timeout`).
+  - Added `armAuthReadyWatchdog()` (configurable via `AUTH_READY_TIMEOUT_MS`, default `120000` ms) to detect sessions stuck between `authenticated` and `ready`, safely destroy Chromium, and schedule a clean retry.
+  - Added centralized, re-entrancy-safe `scheduleRestart()` helper used across initialization failures, `auth_failure`, critical `pageerror` events, and post-auth watchdog timeouts.
+
+---
+
+### Corrigido
+
+- **Travamento silencioso após `authenticated` (`EACCES: permission denied, mkdir './.wwebjs_cache/'`)** _(src/client.js, Dockerfile)_
+  - Causa raiz: ao remover o override obsoleto de `webVersionCache` na `v5.2.1`, o `whatsapp-web.js` passou a usar o padrão `LocalWebCache` (`./.wwebjs_cache/` dentro de `/app`). Como o `Dockerfile` criava `pptruser` (`uid=997`) como dono de `/app` (`755`) enquanto o `docker-compose.yml` executa os containers como `user: "1000:1000"` (`node`), `webCache.persist()` lançava `EACCES` dentro do callback `onAppStateHasSyncedEvent` exposto ao Puppeteer. Essa rejeição permanecia silenciosa no contexto do Chromium sem log no Node.js, abortando antes de `LoadUtils` e impedindo o disparo do evento `ready`.
+  - Configurado explicitamente `webVersionCache: { type: "none" }` nas opções do `Client`, garantindo carregamento ao vivo do WhatsApp Web sem gravação de cache HTML em `/app`.
+  - Alinhado o `Dockerfile` para usar o usuário padrão `node` (`uid/gid 1000`) da imagem em vez de criar `pptruser` (`uid 997`), eliminando o conflito de permissões em `/app` com `user: "1000:1000"`.
+
+### Adicionado
+
+- **Watchdog pós-autenticação (`ready`) e diagnóstico de `pageerror` do Chromium** _(src/client.js, README.md)_
+  - Adicionada `attachPageErrorDiagnostics()` para capturar eventos `pageerror` do Chromium (expondo nos logs rejeições silenciosas do browser ou de callbacks `exposeFunction`, com recuperação imediata em erros críticos de sistema de arquivos/injeção como `EACCES`, `EROFS`, `ENOSPC` ou `ready timeout`).
+  - Adicionada `armAuthReadyWatchdog()` (configurável via `AUTH_READY_TIMEOUT_MS`, padrão `120000` ms) para detectar sessões presas entre `authenticated` e `ready`, encerrar o Chromium com segurança e agendar reinicialização limpa.
+  - Adicionada função centralizada `scheduleRestart()` com proteção contra reentrância para falhas de inicialização, `auth_failure`, erros críticos de página e timeouts do watchdog pós-autenticação.
+
+---
+
+> **Commit:** `fix(client): disable local webVersionCache, align Docker UID, and add post-auth watchdog [v5.2.3]`  
+> **Tag:** `v5.2.3`
+
+---
+
 ## [5.2.2] - 2026-11-25
 
 ### Added

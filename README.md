@@ -1,4 +1,4 @@
-# WhatsApp Scheduler Bot (v5.2.2)
+# WhatsApp Scheduler Bot (v5.2.3)
 
 Bot automatizado para WhatsApp que realiza o agendamento e disparo inteligente de anúncios imobiliários para grupos, com auto-alimentação via banco PostgreSQL compartilhado, segmentação geográfica por bairros, controle de concorrência atômico entre múltiplas instâncias e mecanismos avançados anti-ban.
 
@@ -12,6 +12,7 @@ Bot automatizado para WhatsApp que realiza o agendamento e disparo inteligente d
   - [2. Grade de Agendamento (14 Slots Diários)](#2-grade-de-agendamento-14-slots-diários)
   - [3. Disparo com Mecanismos Anti-Ban](#3-disparo-com-mecanismos-anti-ban)
   - [4. Watchdog e Catch-up](#4-watchdog-e-catch-up)
+  - [5. Resiliência Pós-Autenticação e Diagnóstico do Chromium](#5-resiliência-pós-autenticação-e-diagnóstico-do-chromium)
 - [Segmentação por Bairro](#segmentação-por-bairro)
 - [Comandos no WhatsApp](#comandos-no-whatsapp)
 - [Configuração](#configuração)
@@ -97,6 +98,14 @@ Se uma instância ficar offline ou reiniciar durante o dia:
 - Identifica slots que ficaram com status `waiting` após o horário programado ter passado.
 - O primeiro slot atrasado é disparado imediatamente; slots atrasados subsequentes recebem um espaçamento seguro aleatório (20 a 30 minutos).
 
+### 5. Resiliência Pós-Autenticação e Diagnóstico do Chromium
+
+Para evitar que uma instância fique presa indefinidamente entre `authenticated` e `ready` (por exemplo, por erros silenciosos em callbacks expostos pelo Puppeteer ou mudanças no WhatsApp Web):
+
+- **Cache HTML desativado (`webVersionCache: { type: "none" }`):** Evita gravações em `./.wwebjs_cache/` (que podem causar `EACCES` silencioso em containers com `/app` restrito) e garante carregamento da versão ativa do WhatsApp Web.
+- **Monitoramento de `pageerror` do Chromium (`attachPageErrorDiagnostics`):** Captura exceções e rejeições não tratadas no contexto da página (incluindo falhas dentro de `onAppStateHasSyncedEvent`) e registra em `[ERROR] [Chromium pageerror]`. Caso ocorra erro crítico antes de `ready` (`EACCES`, `EROFS`, `ENOSPC`, `ready timeout`), aciona reinicialização imediata.
+- **Watchdog Pós-Autenticação (`armAuthReadyWatchdog`):** Se `authenticated` disparar mas `ready` não ocorrer dentro de `AUTH_READY_TIMEOUT_MS` (padrão: `120000` ms / 2 minutos), o bot encerra o Chromium de forma controlada (`client.destroy()`) e reagenda `startBot()` via `scheduleRestart()` (protegido contra reinícios concorrentes e locks órfãos `SingletonLock`).
+
 ---
 
 ## Segmentação por Bairro
@@ -181,6 +190,7 @@ O bot suporta carregamento automático de arquivo `.env` (via `process.loadEnvFi
 - `DATABASE_URL`: String de conexão com o PostgreSQL (Padrão: `postgresql://postgres:postgres@localhost:5432/imoveis`).
 - `ACCOUNTS_JSON`: (Opcional) String JSON completa contendo a configuração das contas. Quando definida, substitui a leitura de arquivos locais (ideal para ambientes Docker, CI/CD ou PM2).
 - `ACCOUNTS_CONFIG_PATH`: (Opcional) Caminho customizado para o arquivo de contas (padrão: `accounts.json` na raiz ou `data/accounts.json`).
+- `AUTH_READY_TIMEOUT_MS`: (Opcional) Tempo máximo em milissegundos entre `authenticated` e `ready` antes de o watchdog reiniciar o cliente automaticamente (Padrão: `120000`).
 
 ---
 
