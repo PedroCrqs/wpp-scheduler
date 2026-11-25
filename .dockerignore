@@ -1,0 +1,27 @@
+# Controle de versão e documentação
+.git/
+.gitignore
+CHANGELOG.md
+README.md
+accounts.example.json
+
+# Dependências locais (reinstaladas no container via npm ci --omit=dev)
+node_modules/
+
+# Dados de runtime e sessões (montados via volume em /app/data)
+data/
+.wwebjs_auth/
+.wwebjs_cache/
+sessions/
+logs/
+queues/
+schedules/
+
+# Ambiente local e PM2
+.env
+.env.*
+ecosystem.config.js
+
+# Arquivos temporários de sistema
+.DS_Store
+Thumbs.db

@@ -8,6 +8,29 @@ Baseado em [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [5.2.2] - 2026-11-25
+
+### Added
+
+- **Docker build context optimization** _(.dockerignore, README.md)_
+  - Added `.dockerignore` excluding `data/`, `node_modules/`, `.git/`, `.wwebjs_cache/`, `.wwebjs_auth/`, `.env*`, `ecosystem.config.js`, and documentation files from the Docker build context.
+  - Prevents multi-hundred-megabyte/gigabyte runtime directories from being sent to the Docker daemon and avoids invalidating the `COPY . .` layer cache, while preserving `accounts.json` for containerized deployments.
+
+---
+
+### Adicionado
+
+- **Otimização do contexto de build Docker** _(.dockerignore, README.md)_
+  - Adicionado `.dockerignore` excluindo `data/`, `node_modules/`, `.git/`, `.wwebjs_cache/`, `.wwebjs_auth/`, `.env*`, `ecosystem.config.js` e arquivos de documentação do contexto de build do Docker.
+  - Evita o envio de diretórios de runtime de centenas de megabytes/gigabytes para o daemon Docker e impede a invalidação do cache da camada `COPY . .`, preservando `accounts.json` para os containers.
+
+---
+
+> **Commit:** `chore(docker): add .dockerignore to optimize build context [v5.2.2]`  
+> **Tag:** `v5.2.2`
+
+---
+
 ## [5.2.1] - 2026-11-25
 
 ### Fixed
